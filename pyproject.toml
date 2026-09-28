@@ -87,6 +87,8 @@ only_mutate = [
     "linkedin_mcp/messaging.py",
     "linkedin_mcp/messages_actions.py",
     "linkedin_mcp/cli.py",
+    "linkedin_mcp/governor.py",
+    "linkedin_mcp/post_cdp.py",
 ]
 
 [dependency-groups]
