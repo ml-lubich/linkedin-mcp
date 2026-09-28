@@ -60,6 +60,11 @@ def capture(port: int = DEFAULT_PORT, timeout_seconds: float = 600.0, poll_secon
             # where the file is briefly group/world-readable under the default umask.
             fd = os.open(COOKIE_FILE, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
             try:
+                # os.open()'s mode is only applied when O_CREAT actually
+                # creates a new file -- if COOKIE_FILE already existed (an
+                # older version, a manual chmod), its old permissions would
+                # otherwise survive untouched. Tighten explicitly, always.
+                os.fchmod(fd, 0o600)
                 os.write(fd, header.encode("utf-8"))
             finally:
                 os.close(fd)

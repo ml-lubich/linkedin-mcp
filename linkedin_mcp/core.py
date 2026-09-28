@@ -186,6 +186,11 @@ def messages_send(
         if selection.get("ambiguous"):
             raise ValueError(f"'{to}' is ambiguous; matches: {selection.get('matches')}")
         if not selection.get("ok"):
+            if selection.get("matched"):
+                # A thread WAS found and clicked -- the failure is the
+                # composer never appearing, a different problem than no
+                # match existing, and worth telling apart.
+                raise ValueError(f"matched '{to}' but the compose box never appeared")
             raise ValueError(f"no thread matched '{to}'")
     # Pace/dedupe through a real Governor whenever there's an identity to pace
     # against -- `target`, or `to` when target wasn't given explicitly --

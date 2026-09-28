@@ -53,3 +53,27 @@ def test_capture_creates_the_config_dir_with_0700(monkeypatch, tmp_path):
     auth_capture.capture(port=9333, timeout_seconds=5)
 
     assert stat.S_IMODE(cookie_home.stat().st_mode) == 0o700
+
+
+def test_capture_tightens_perms_of_a_pre_existing_loosely_permissioned_file(monkeypatch, tmp_path):
+    """Correctness fix (review L1): os.open()'s mode argument is only
+    applied when O_CREAT actually creates a NEW file -- if the cookie file
+    already exists (e.g. from an older version, or a manual chmod), its
+    permissions are left as-is by open() alone. Must be tightened
+    explicitly regardless."""
+    cookie_home = tmp_path / "linkedin-mcp"
+    cookie_home.mkdir(mode=0o700)
+    cookie_file = cookie_home / "cookies"
+    cookie_file.write_text("stale")
+    cookie_file.chmod(0o644)
+    monkeypatch.setattr(auth_capture, "COOKIE_HOME", cookie_home)
+    monkeypatch.setattr(auth_capture, "COOKIE_FILE", cookie_file)
+    monkeypatch.setattr(
+        auth_capture,
+        "_fetch_cookies",
+        lambda port: [{"name": "li_at", "value": "x"}, {"name": "JSESSIONID", "value": "y"}],
+    )
+
+    auth_capture.capture(port=9333, timeout_seconds=5)
+
+    assert stat.S_IMODE(cookie_file.stat().st_mode) == 0o600

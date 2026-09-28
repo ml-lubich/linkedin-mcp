@@ -149,11 +149,15 @@ _THREAD_QUERY_JS = r"""
     const name = nameOf(el);
     const link = el.querySelector("a");
     const href = link ? (link.getAttribute("href") || "") : "";
-    // Dedupe by href (a stable per-thread id), never by display name -- two
-    // distinct threads can legitimately share a name.
-    const dedupeKey = href || name;
-    if (!name || !dedupeKey || seen.has(dedupeKey)) continue;
-    seen.add(dedupeKey);
+    // Dedupe by href (a stable per-thread id) ONLY -- never falling back to
+    // name when href is missing, or two distinct anchorless threads that
+    // happen to share a name would collapse into one entry before Python's
+    // match_thread ever gets a chance to see (and flag) the ambiguity.
+    if (!name) continue;
+    if (href) {
+      if (seen.has(href)) continue;
+      seen.add(href);
+    }
     const previewNode = el.querySelector(".msg-conversation-card__message-snippet, .msg-conversation-listitem__message-snippet");
     const unread = /unread/i.test(el.className) || !!el.querySelector(".notification-badge, .msg-conversation-card__unread-count");
     if (q && !name.toLowerCase().includes(q) && !(previewNode && previewNode.innerText.toLowerCase().includes(q))) continue;
@@ -201,8 +205,12 @@ ACT_JS = r"""async (opts) => {
     const n = nameOf(el);
     const link = el.querySelector("a");
     const href = link ? (link.getAttribute("href") || "") : "";
-    const dedupeKey = href || n;
-    if (!n || !dedupeKey || seen.has(dedupeKey)) continue;
+    if (!n) continue;
+    // Dedupe by href only -- see the identical fix in the listing JS above.
+    if (href) {
+      if (seen.has(href)) continue;
+      seen.add(href);
+    }
     if (wantHref) {
       // Caller already disambiguated by href (see messages_actions.match_thread) --
       // an exact, unambiguous-by-construction match, never a substring one.
@@ -210,7 +218,6 @@ ACT_JS = r"""async (opts) => {
     } else if (!q || !n.toLowerCase().includes(q)) {
       continue;
     }
-    seen.add(dedupeKey);
     matches.push({name: n, el: el});
   }
   if (matches.length === 0) {
