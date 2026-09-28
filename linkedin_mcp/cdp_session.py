@@ -1,11 +1,24 @@
 """One CDP session, several commands.
 
-own_chrome.cdp.evaluate()/navigate() each open a fresh WebSocket per call,
-which is fine for one-shot Runtime.evaluate/Page.navigate calls but not for
-file upload: DOM.setFileInputFiles needs an objectId minted by a
-Runtime.evaluate on the *same* connection. This module is a small, stdlib-only
-CDP session for that one gap in own-chrome's public API -- it does not
-reimplement own-chrome's CLI or queries.
+own_chrome.cdp.evaluate()/navigate() each re-resolve the target tab from a
+fresh pages() list on every call (by url_contains/host substring/hostname
+match) and open a fresh WebSocket per call. Two gaps that leaves for a
+multi-step operation (fill, attach, send, verify) that must stay pinned to
+the exact tab it started on (see messaging.linkedin_tab/send_message):
+
+1. DOM.setFileInputFiles needs an objectId minted by a Runtime.evaluate on
+   the *same* connection -- own-chrome's public API has no way to do that.
+2. Re-resolving by URL on every call means a tab that opens or navigates to
+   an attacker URL between steps (e.g. mid-operation, during a sleep) could
+   be picked up by a later re-resolution instead of the tab actually chosen
+   at the start.
+
+This module covers both: CdpSession for the shared-connection case, and
+evaluate_pinned/set_file_input_pinned for routing every step of one
+operation through the SAME CDP target (via own_chrome.cdp's public
+cdp_call(ws_url, ...), given the target's webSocketDebuggerUrl once) instead
+of re-resolving by URL each time. It does not reimplement own-chrome's CLI or
+queries.
 """
 
 from __future__ import annotations
@@ -17,16 +30,21 @@ import socket
 import urllib.parse
 from typing import Any
 
-from own_chrome.cdp import ChromeError, pick_page
+from own_chrome.cdp import ChromeError, cdp_call, pick_page
 
 
 class CdpSession:
     """A single WebSocket connection to one Chrome tab, for a short sequence
-    of CDP commands that must share objectIds/domain state."""
+    of CDP commands that must share objectIds/domain state.
 
-    def __init__(self, port: int, url_contains: str = "", host: str = ""):
-        page = pick_page(port, url_contains, host)
-        ws_url = page.get("webSocketDebuggerUrl")
+    Pass either (port, url_contains/host) to resolve the tab via
+    own_chrome.cdp.pick_page, or an already-known `ws_url` to connect
+    directly to that exact CDP target, skipping tab resolution entirely."""
+
+    def __init__(self, port: int = 0, url_contains: str = "", host: str = "", *, ws_url: str = ""):
+        if not ws_url:
+            page = pick_page(port, url_contains, host)
+            ws_url = page.get("webSocketDebuggerUrl") or ""
         if not ws_url:
             raise ChromeError("Tab has no CDP websocket")
         self._sock = self._connect(ws_url)
@@ -134,20 +152,39 @@ class CdpSession:
         self.close()
 
 
-def set_file_input(port: int, selector: str, file_path: str, url_contains: str = "", host: str = "") -> bool:
+def _set_file_input_via_session(session: CdpSession, selector: str, file_path: str) -> bool:
+    result = session.call(
+        "Runtime.evaluate",
+        {"expression": f"document.querySelector({json.dumps(selector)})", "returnByValue": False},
+    )
+    remote = result.get("result", {})
+    object_id = remote.get("objectId")
+    if not object_id:
+        return False
+    session.call("DOM.setFileInputFiles", {"files": [file_path], "objectId": object_id})
+    return True
+
+
+def set_file_input(
+    port: int, selector: str, file_path: str, url_contains: str = "", host: str = "", ws_url: str = ""
+) -> bool:
     """Set a hidden <input type="file"> to file_path via CDP, no clicking the
-    real file picker. Returns True if the element was found and set."""
-    with CdpSession(port, url_contains, host) as session:
-        result = session.call(
-            "Runtime.evaluate",
-            {"expression": f"document.querySelector({json.dumps(selector)})", "returnByValue": False},
-        )
-        remote = result.get("result", {})
-        object_id = remote.get("objectId")
-        if not object_id:
-            return False
-        session.call(
-            "DOM.setFileInputFiles",
-            {"files": [file_path], "objectId": object_id},
-        )
-        return True
+    real file picker. Returns True if the element was found and set.
+
+    Pass `ws_url` (the exact CDP target captured earlier by the caller, see
+    messaging.linkedin_tab/send_message) to connect directly to that target
+    instead of re-resolving the tab from `port`/url_contains/host."""
+    with CdpSession(port, url_contains, host, ws_url=ws_url) as session:
+        return _set_file_input_via_session(session, selector, file_path)
+
+
+def evaluate_pinned(ws_url: str, expression: str) -> Any:
+    """Runtime.evaluate on the exact CDP target at `ws_url`, bypassing
+    own_chrome.cdp.evaluate's per-call pages()/pick_page re-resolution.
+    Same semantics as own_chrome.cdp.evaluate (returnByValue, awaitPromise,
+    exceptionDetails raised as ChromeError), routed through its public
+    cdp_call(ws_url, ...) instead of evaluate(port, ..., url_contains/host)."""
+    result = cdp_call(ws_url, "Runtime.evaluate", {"expression": expression, "returnByValue": True, "awaitPromise": True})
+    if "exceptionDetails" in result:
+        raise ChromeError(json.dumps(result["exceptionDetails"])[:500])
+    return result.get("result", {}).get("value")

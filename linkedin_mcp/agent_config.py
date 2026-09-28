@@ -62,6 +62,10 @@ class Config:
     # messaging._validate_attachment_path). Empty means: fall back to
     # referral.resume_path's directory, else ~/Documents.
     attachments_dir: str = ""
+    # How long an identical `messages send --to NAME` text is refused as a
+    # likely double-send before it's allowed again (see core.messages_send
+    # and Governor.check_windowed). Default 24h.
+    to_dedupe_window_seconds: int = 86400
 
 
 def _load_toml(path: Path) -> dict:
@@ -107,6 +111,7 @@ def load_config(path: Path | None = None, env: dict | None = None) -> Config:
         share_contact=str(popups.get("share_contact") or "decline"),
         governor_db_path=str(governor_raw.get("db_path") or ""),
         attachments_dir=str(raw.get("attachments_dir") or ""),
+        to_dedupe_window_seconds=int(raw.get("to_dedupe_window_seconds") or 86400),
     )
 
     if env.get("LINKEDIN_AGENT_GOVERNOR_DB"):
@@ -130,5 +135,7 @@ def load_config(path: Path | None = None, env: dict | None = None) -> Config:
         cfg.never_contact = _split_csv(env["LINKEDIN_AGENT_NEVER_CONTACT"])
     if env.get("LINKEDIN_AGENT_ATTACHMENTS_DIR"):
         cfg.attachments_dir = env["LINKEDIN_AGENT_ATTACHMENTS_DIR"]
+    if env.get("LINKEDIN_AGENT_TO_DEDUPE_WINDOW"):
+        cfg.to_dedupe_window_seconds = int(env["LINKEDIN_AGENT_TO_DEDUPE_WINDOW"])
 
     return cfg

@@ -27,10 +27,10 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from own_chrome.cdp import ChromeError, evaluate, navigate, open_tab, pages
+from own_chrome.cdp import ChromeError, evaluate, host_matches, navigate, open_tab, pages
 
 from linkedin_mcp.agent_config import Config
-from linkedin_mcp.cdp_session import set_file_input
+from linkedin_mcp.cdp_session import evaluate_pinned, set_file_input
 from linkedin_mcp.governor import Governor
 from linkedin_mcp.messages_actions import (
     act_expression,
@@ -117,7 +117,7 @@ def read_thread(port: int, limit: int = 40) -> dict:
     return data
 
 
-def _fill_compose(port: int, text: str, url_contains: str) -> None:
+def _fill_compose(ws_url: str, text: str) -> None:
     script = (
         "((text) => {"
         f"const box = document.querySelector({json.dumps(COMPOSE_SELECTOR)});"
@@ -129,25 +129,25 @@ def _fill_compose(port: int, text: str, url_contains: str) -> None:
         "return true;"
         "})(" + json.dumps(text) + ")"
     )
-    ok = evaluate(port, script, url_contains=url_contains)
+    ok = evaluate_pinned(ws_url, script)
     if not ok:
         raise ChromeError("compose box not found")
 
 
-def _send_button_enabled(port: int, url_contains: str) -> bool:
+def _send_button_enabled(ws_url: str) -> bool:
     script = (
         f"(() => {{const b = document.querySelector({json.dumps(SEND_BUTTON_SELECTOR)});"
         "return !!b && b.getAttribute('disabled') === null"
         " && b.getAttribute('aria-disabled') !== 'true';})()"
     )
-    return bool(evaluate(port, script, url_contains=url_contains))
+    return bool(evaluate_pinned(ws_url, script))
 
 
-def _click_send(port: int, url_contains: str) -> None:
+def _click_send(ws_url: str) -> None:
     script = (
         f"(() => {{const b = document.querySelector({json.dumps(SEND_BUTTON_SELECTOR)}); if (b) b.click(); return !!b;}})()"
     )
-    evaluate(port, script, url_contains=url_contains)
+    evaluate_pinned(ws_url, script)
 
 
 def _normalize_for_comparison(text: str) -> str:
@@ -158,22 +158,22 @@ def _normalize_for_comparison(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip().lower()
 
 
-def _last_message_text(port: int, url_contains: str) -> str:
+def _last_message_text(ws_url: str) -> str:
     script = (
         "(() => {const items = document.querySelectorAll('.msg-s-event-listitem');"
         "const last = items[items.length - 1]; return last ? last.innerText : '';})()"
     )
-    return evaluate(port, script, url_contains=url_contains) or ""
+    return evaluate_pinned(ws_url, script) or ""
 
 
-def _compose_is_empty(port: int, url_contains: str) -> bool:
+def _compose_is_empty(ws_url: str) -> bool:
     # Exactly zero, not "under some small threshold" -- a short sent message
     # like "ok" (2 chars) left un-cleared by a failed send must read as
     # non-empty, not slip under a length-5 cutoff as if it were whitespace.
     script = (
         f"(() => {{const b = document.querySelector({json.dumps(COMPOSE_SELECTOR)}); return !b || b.innerText.trim().length === 0;}})()"
     )
-    return bool(evaluate(port, script, url_contains=url_contains))
+    return bool(evaluate_pinned(ws_url, script))
 
 
 def send_message(
@@ -189,7 +189,7 @@ def send_message(
     governor: Governor | None = None,
     target: str = "",
     action: str = "message",
-    dedupe: bool = True,
+    dedupe_window_seconds: float | None = None,
 ) -> dict:
     """Fill the compose box (and optionally attach a file), then send only
     when confirm=True. Returns a proof dict describing what happened.
@@ -201,19 +201,24 @@ def send_message(
     bulk/loop-shaped callers -- send_referral_for_candidate, publish_post --
     always pass one).
 
-    dedupe: when True (default), a repeat send to the same target is refused
-    permanently (Governor.check()/.record()) -- for an explicit, stable
-    `target` identity where a genuine repeat is a bug (referral resume,
-    a post's own text hash). When False, only the rolling budget applies
-    (Governor.check_budget()/.record_paced()) -- for `to`-a-person-by-name
-    sends, where replying to the same person again next week is normal and
+    dedupe_window_seconds: None (default) means a repeat send to the same
+    target is refused permanently (Governor.check()) -- for an explicit,
+    stable `target` identity where a genuine repeat is a bug (referral
+    resume, a post's own text hash). A number of seconds means the repeat
+    is refused only within that window (Governor.check_windowed()) -- for
+    `to`-a-person-by-name sends keyed on (name, text hash): the identical
+    text to the same person is a likely double-send within the window, but
+    a different reply, or the same short "thanks" next week, is normal and
     must not be permanently blocked by the first confirmed send.
     """
     cdp_port = port if port is not None else config.cdp_port
-    # Resolved ONCE and pinned for every remaining step (fill, attach, send,
-    # verify) -- selecting a thread and then typing/sending must never target
-    # different tabs (see linkedin_tab's docstring and test_pinned_tab_targeting.py).
-    target_url = linkedin_tab(cdp_port)["url"]
+    # Resolved ONCE and pinned by CDP target (webSocketDebuggerUrl) for every
+    # remaining step (fill, attach, send, verify) -- selecting a thread and
+    # then typing/sending must never target different tabs, and no later
+    # step must be re-resolvable to a DIFFERENT tab that appears in between
+    # (see linkedin_tab's docstring and test_pinned_tab_targeting.py).
+    tab = linkedin_tab(cdp_port)
+    ws_url = tab["webSocketDebuggerUrl"]
 
     validated_attachment: Path | None = None
     if attachment_path:
@@ -222,7 +227,7 @@ def send_message(
         # either way, never a silent no-op.
         validated_attachment = _validate_attachment_path(attachment_path, config)
 
-    _fill_compose(cdp_port, text, target_url)
+    _fill_compose(ws_url, text)
 
     if not confirm:
         raise SendNotConfirmedError(
@@ -237,20 +242,30 @@ def send_message(
 
     attached = False
     if validated_attachment is not None:
-        attached = set_file_input(cdp_port, FILE_INPUT_SELECTOR, str(validated_attachment), url_contains=target_url)
+        attached = set_file_input(cdp_port, FILE_INPUT_SELECTOR, str(validated_attachment), ws_url=ws_url)
         if not attached:
             raise ChromeError("no file input found; not sending")
         time.sleep(attach_wait_seconds)
 
     if governor is not None and target:
-        if dedupe:
-            governor.check(action, target)
+        if dedupe_window_seconds is not None:
+            governor.check_windowed(action, target, dedupe_window_seconds)
         else:
-            governor.check_budget(action)
+            governor.check(action, target)
 
-    if not _send_button_enabled(cdp_port, target_url):
+    # F2: the pinned tab may have navigated away from linkedin.com during the
+    # attach/dedupe-check delay above -- re-check its CURRENT url (over the
+    # same pinned CDP target, never a fresh pages() lookup) right before
+    # clicking Send, and abort without clicking anything if it has.
+    current_url = evaluate_pinned(ws_url, "location.href") or ""
+    if not host_matches(current_url, TAB):
+        raise ChromeError(
+            f"pinned tab navigated away from {TAB} before send (now at {current_url!r}); aborting, nothing clicked"
+        )
+
+    if not _send_button_enabled(ws_url):
         raise ChromeError("send button is disabled; not sending")
-    _click_send(cdp_port, target_url)
+    _click_send(ws_url)
 
     # Record right after the confirmed click, not gated on verification
     # succeeding below: the click already happened, so a retry from here on
@@ -259,10 +274,7 @@ def send_message(
     # verification itself succeeded is still reported separately as
     # proof["sent"].
     if governor is not None and target:
-        if dedupe:
-            governor.record(action, target)
-        else:
-            governor.record_paced(action)
+        governor.record(action, target)
 
     proof = {"last_has_hint": False, "compose_empty": False}
     # Without an attachment, verify against the text that was actually sent
@@ -275,8 +287,8 @@ def send_message(
     hint = _normalize_for_comparison(attachment_name_hint or text)
     for _ in range(verify_attempts):
         time.sleep(verify_wait_seconds)
-        last_text = _normalize_for_comparison(_last_message_text(cdp_port, target_url))
-        proof["compose_empty"] = _compose_is_empty(cdp_port, target_url)
+        last_text = _normalize_for_comparison(_last_message_text(ws_url))
+        proof["compose_empty"] = _compose_is_empty(ws_url)
         proof["last_has_hint"] = (hint in last_text) if hint else bool(last_text)
         if proof["last_has_hint"] and proof["compose_empty"]:
             break
@@ -291,30 +303,27 @@ def send_message(
 def linkedin_tab(port: int) -> dict:
     """Resolve the ONE tab every step of a messaging operation (list, select,
     read, fill, attach, send, verify) must stay pinned to: choose_linkedin_tab's
-    host-validated, messaging-preferring choice -- re-checked here so no
-    OTHER open tab's URL contains it as a substring. own_chrome.cdp's
-    url_contains re-resolves by plain substring on every call, with no
-    hostname check, so a tab crafted to embed our target URL (e.g.
-    https://evil.tld/#https://www.linkedin.com/messaging/) could otherwise
-    be silently picked up by that later re-resolution instead of the tab we
-    actually validated here."""
-    tabs = pages(port)
-    chosen = choose_linkedin_tab(tabs)
+    host-validated, messaging-preferring choice.
+
+    Callers must route every remaining step of that operation through THIS
+    tab's CDP target (its `webSocketDebuggerUrl`, see evaluate_pinned/
+    set_file_input_pinned) rather than calling this again or re-resolving by
+    URL (own_chrome.cdp's url_contains/host= re-picks from a fresh pages()
+    list every call). Resolving once and pinning is what makes a tab that
+    opens/navigates to an attacker URL mid-operation (e.g.
+    https://evil.tld/#https://www.linkedin.com/messaging/, during the
+    attach/verify sleeps) structurally unreachable: pages() is never called
+    again for the rest of the operation, so there is nothing for it to be
+    picked up by."""
+    chosen = choose_linkedin_tab(pages(port))
     if chosen is None:
         raise ChromeError("No open tab with hostname 'linkedin.com' (or a subdomain of it)")
-    target_url = chosen.get("url") or ""
-    collisions = [t for t in tabs if t is not chosen and target_url and target_url in (t.get("url") or "")]
-    if collisions:
-        raise ChromeError(
-            f"refusing to target {target_url!r}: another open tab's URL also contains it "
-            f"({[t.get('url') for t in collisions]})"
-        )
     return chosen
 
 
 def _eval_on_linkedin_tab(port: int, expression: str) -> object:
     tab = linkedin_tab(port)
-    return evaluate(port, expression, url_contains=tab["url"])
+    return evaluate_pinned(tab["webSocketDebuggerUrl"], expression)
 
 
 def _as_dict(raw: object) -> dict:

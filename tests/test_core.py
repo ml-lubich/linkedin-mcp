@@ -383,7 +383,9 @@ def test_messages_send_passes_every_kwarg_exactly(monkeypatch, tmp_path) -> None
     # constructor has something real to open instead of the user's actual
     # ~/.config/linkedin-agent/governor.db.
     # Updated again for review H2: an explicit `target` (as here) still gets
-    # full dedupe (dedupe=True); only `to`-only sends pace without dedupe.
+    # full permanent dedupe; only `to`-only sends pace without permanent dedupe.
+    # Updated again for review F1: permanent dedupe is now expressed as
+    # dedupe_window_seconds=None (a number means windowed, for `to`-only).
     from linkedin_mcp.governor import Governor
 
     captured = {}
@@ -409,7 +411,7 @@ def test_messages_send_passes_every_kwarg_exactly(monkeypatch, tmp_path) -> None
         "attachment_name_hint": "Resume.pdf",
         "port": 1234,
         "target": "thread-1",
-        "dedupe": True,
+        "dedupe_window_seconds": None,
     }
 
 

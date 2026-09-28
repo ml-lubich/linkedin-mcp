@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import sqlite3
 import time
-import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -110,26 +109,26 @@ class Governor:
         )
         self._db.commit()
 
-    def check_budget(self, action: str) -> None:
-        """Raise RateLimited if the rolling budget for `action` is exhausted.
-        Unlike check(), this never dedupes by target -- for callers where a
-        repeat to the same real-world target is expected and fine (e.g. a
-        second reply to the same person next week), and only the budget
-        should apply."""
+    def check_windowed(self, action: str, target: str, window_seconds: float) -> None:
+        """Raise RateLimited if this exact (action, target) was recorded
+        within the last `window_seconds` -- unlike check(), a repeat is
+        refused only inside the window, not forever. The rolling budget
+        still applies on top. For callers where a repeat to the same
+        real-world target is expected and fine eventually (e.g. a second
+        reply to the same person next week), but an identical repeat right
+        now is exactly the double-send risk to guard against."""
+        if self.already_done(action, target):
+            (at,) = self._db.execute(
+                "SELECT at FROM actions WHERE action = ? AND target = ?", (action, target)
+            ).fetchone()
+            if (self._now() - at) < window_seconds:
+                raise RateLimited(
+                    f"{action} already performed on {target!r} within the last {window_seconds:.0f}s; refusing to repeat."
+                )
         budget = self.budget(action)
         if budget.remaining <= 0:
             hours = budget.window_seconds // 3600
             raise RateLimited(f"{action} budget exhausted: {budget.used}/{budget.limit} in the last {hours}h.")
-
-    def record_paced(self, action: str) -> None:
-        """Counts toward check_budget()'s rolling window, under a unique
-        synthetic target so it never blocks a future check()/check_budget()
-        call for any real target -- the counterpart to check_budget()."""
-        self._db.execute(
-            "INSERT INTO actions (action, target, at) VALUES (?, ?, ?)",
-            (action, f"__paced__:{uuid.uuid4()}", self._now()),
-        )
-        self._db.commit()
 
     def close(self) -> None:
         self._db.close()

@@ -14,6 +14,7 @@ Two families of write action live here, gated two different ways:
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Optional
 
@@ -196,11 +197,21 @@ def messages_send(
     # against -- `target`, or `to` when target wasn't given explicitly --
     # otherwise send_message's own governor check is silently a no-op.
     # Explicit `target` gets permanent dedupe (a repeat is a bug -- the same
-    # resume/post/thread-id being sent twice). `to`-only is paced by the
-    # rolling budget but never permanently blocked -- replying to the same
-    # person again next week is normal, not a repeat to refuse forever.
-    identity = target or to
-    dedupe = bool(target)
+    # resume/post/thread-id being sent twice). `to`-only dedupes on the text
+    # itself, but only within a time window (config.to_dedupe_window_seconds)
+    # -- an identical retry (e.g. after a verification false negative) is
+    # refused as a likely double-send, while a different reply, or the same
+    # short text again after the window, is normal and goes through.
+    if target:
+        identity = target
+        dedupe_window_seconds = None
+    elif to:
+        digest = hashlib.sha256(messaging_mod._normalize_for_comparison(text).encode()).hexdigest()[:16]
+        identity = f"{to}:{digest}"
+        dedupe_window_seconds = getattr(config, "to_dedupe_window_seconds", 86400)
+    else:
+        identity = ""
+        dedupe_window_seconds = None
     governor = Governor(default_db_path(getattr(config, "governor_db_path", ""))) if identity else None
     try:
         return messaging_mod.send_message(
@@ -212,7 +223,7 @@ def messages_send(
             port=port,
             governor=governor,
             target=identity,
-            dedupe=dedupe,
+            dedupe_window_seconds=dedupe_window_seconds,
         )
     finally:
         if governor is not None:

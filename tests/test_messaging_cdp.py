@@ -18,8 +18,18 @@ import pytest
 from linkedin_mcp import messaging
 from linkedin_mcp.cdp_session import ChromeError
 
-_MESSAGING_TAB = {"id": "msg", "url": "https://www.linkedin.com/messaging/", "title": "Messaging"}
-_FEED_TAB = {"id": "feed", "url": "https://www.linkedin.com/feed/", "title": "Feed | LinkedIn"}
+_MESSAGING_TAB = {
+    "id": "msg",
+    "url": "https://www.linkedin.com/messaging/",
+    "title": "Messaging",
+    "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/page/msg",
+}
+_FEED_TAB = {
+    "id": "feed",
+    "url": "https://www.linkedin.com/feed/",
+    "title": "Feed | LinkedIn",
+    "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/page/feed",
+}
 
 
 @pytest.fixture(autouse=True)
@@ -85,8 +95,8 @@ def test_list_threads_prefers_the_messaging_tab_when_a_feed_tab_is_listed_first(
     monkeypatch.setattr(messaging, "navigate", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not navigate")))
     monkeypatch.setattr(
         messaging,
-        "evaluate",
-        lambda port, expr, **kw: json.dumps(
+        "evaluate_pinned",
+        lambda ws_url, expr: json.dumps(
             {"query": "threads", "url": _MESSAGING_TAB["url"], "title": "Messaging", "threads": [{"name": "Ada", "preview": "hi", "unread": False}], "lines": []}
         ),
     )
@@ -98,8 +108,8 @@ def test_list_threads_unread_only(monkeypatch):
     monkeypatch.setattr(messaging, "pages", lambda port: [_MESSAGING_TAB])
     monkeypatch.setattr(
         messaging,
-        "evaluate",
-        lambda port, expr, **kw: json.dumps({"query": "unread", "url": "u", "title": "t", "threads": [], "lines": []}),
+        "evaluate_pinned",
+        lambda ws_url, expr: json.dumps({"query": "unread", "url": "u", "title": "t", "threads": [], "lines": []}),
     )
     result = messaging.list_threads(9222, kind="unread", limit=5)
     assert result["threads"] == []
@@ -111,8 +121,8 @@ def test_list_threads_no_navigate_skips_navigation(monkeypatch):
     monkeypatch.setattr(messaging, "navigate", lambda port, url, **kw: calls.append(url))
     monkeypatch.setattr(
         messaging,
-        "evaluate",
-        lambda port, expr, **kw: json.dumps({"query": "threads", "url": "u", "title": "t", "threads": [], "lines": []}),
+        "evaluate_pinned",
+        lambda ws_url, expr: json.dumps({"query": "threads", "url": "u", "title": "t", "threads": [], "lines": []}),
     )
     messaging.list_threads(9222, kind="threads", no_navigate=True)
     assert calls == []
@@ -125,7 +135,7 @@ def test_select_thread_ambiguous(monkeypatch):
     monkeypatch.setattr(messaging, "pages", lambda port: [_MESSAGING_TAB])
     click_calls = []
 
-    def fake_evaluate(port, expr, **kw):
+    def fake_evaluate(ws_url, expr):
         if '"query": "threads"' in expr:
             return json.dumps(
                 {
@@ -138,7 +148,7 @@ def test_select_thread_ambiguous(monkeypatch):
         click_calls.append(expr)
         raise AssertionError("must not click when ambiguous")
 
-    monkeypatch.setattr(messaging, "evaluate", fake_evaluate)
+    monkeypatch.setattr(messaging, "evaluate_pinned", fake_evaluate)
     result = messaging.select_thread(9222, "Ada")
     assert result["ambiguous"] is True
     assert set(result["matches"]) == {"Ada Lovelace", "Ada Wong"}
@@ -149,8 +159,8 @@ def test_select_thread_no_match(monkeypatch):
     monkeypatch.setattr(messaging, "pages", lambda port: [_MESSAGING_TAB])
     monkeypatch.setattr(
         messaging,
-        "evaluate",
-        lambda port, expr, **kw: json.dumps({"threads": [{"name": "Someone Else", "href": "/messaging/thread/9/"}]}),
+        "evaluate_pinned",
+        lambda ws_url, expr: json.dumps({"threads": [{"name": "Someone Else", "href": "/messaging/thread/9/"}]}),
     )
     result = messaging.select_thread(9222, "Nobody")
     assert result["ok"] is False
@@ -161,7 +171,7 @@ def test_select_thread_exact_match_clicks_by_href(monkeypatch):
     monkeypatch.setattr(messaging, "pages", lambda port: [_MESSAGING_TAB])
     captured = {}
 
-    def fake_evaluate(port, expr, **kw):
+    def fake_evaluate(ws_url, expr):
         if '"query": "threads"' in expr:
             return json.dumps(
                 {
@@ -174,7 +184,7 @@ def test_select_thread_exact_match_clicks_by_href(monkeypatch):
         captured["expr"] = expr
         return json.dumps({"action": "select", "ok": True, "matched": "Ada Lovelace"})
 
-    monkeypatch.setattr(messaging, "evaluate", fake_evaluate)
+    monkeypatch.setattr(messaging, "evaluate_pinned", fake_evaluate)
     result = messaging.select_thread(9222, "Ada Lovelace")
     assert result["ok"] is True
     assert '"href": "/messaging/thread/1/"' in captured["expr"]
@@ -191,8 +201,8 @@ def test_select_thread_blank_name_raises_value_error():
 def test_popups_reports_decline_action_without_apply(monkeypatch):
     monkeypatch.setattr(
         messaging,
-        "evaluate",
-        lambda port, expr, **kw: json.dumps({"title": "Share your contact info?", "buttons": ["No, don't share", "Yes, please share"]}),
+        "evaluate_pinned",
+        lambda ws_url, expr: json.dumps({"title": "Share your contact info?", "buttons": ["No, don't share", "Yes, please share"]}),
     )
     result = messaging.popups(9222, apply=False, policy={"share_contact": "decline"})
     assert result["action"] == "No, don't share"
@@ -202,13 +212,13 @@ def test_popups_reports_decline_action_without_apply(monkeypatch):
 def test_popups_apply_clicks_the_button(monkeypatch):
     calls = []
 
-    def fake_evaluate(port, expr, **kw):
+    def fake_evaluate(ws_url, expr):
         calls.append(expr)
         if len(calls) == 1:
             return json.dumps({"title": "Share your contact info?", "buttons": ["No, don't share"]})
         return True
 
-    monkeypatch.setattr(messaging, "evaluate", fake_evaluate)
+    monkeypatch.setattr(messaging, "evaluate_pinned", fake_evaluate)
     result = messaging.popups(9222, apply=True, policy={"share_contact": "decline"})
     assert result["applied"] is True
     assert len(calls) == 2
@@ -284,7 +294,7 @@ def test_list_threads_filters_unread_before_applying_limit(monkeypatch):
     # for limit=3 (all 3 slots consumed by the read ones first).
     threads = [{"name": f"Read {i}", "href": f"/t/{i}/", "unread": False} for i in range(5)]
     threads += [{"name": f"Unread {i}", "href": f"/t/u{i}/", "unread": True} for i in range(3)]
-    monkeypatch.setattr(messaging, "evaluate", lambda port, expr, **kw: {"threads": threads})
+    monkeypatch.setattr(messaging, "evaluate_pinned", lambda ws_url, expr: {"threads": threads})
 
     result = messaging.list_threads(9222, kind="unread", limit=3, no_navigate=True)
 
@@ -295,7 +305,7 @@ def test_list_threads_filters_unread_before_applying_limit(monkeypatch):
 def test_list_threads_applies_limit_after_unread_filter_not_before(monkeypatch):
     monkeypatch.setattr(messaging, "pages", lambda port: [_MESSAGING_TAB])
     threads = [{"name": f"Unread {i}", "href": f"/t/{i}/", "unread": True} for i in range(5)]
-    monkeypatch.setattr(messaging, "evaluate", lambda port, expr, **kw: {"threads": threads})
+    monkeypatch.setattr(messaging, "evaluate_pinned", lambda ws_url, expr: {"threads": threads})
 
     result = messaging.list_threads(9222, kind="unread", limit=2, no_navigate=True)
 

@@ -26,12 +26,14 @@ def config(allowed_dir) -> Config:
 
 
 def _no_real_calls(monkeypatch):
-    def fake_evaluate(port, script, *a, **k):
+    def fake_evaluate(ws_url, script):
         if "items.length - 1" in script:  # _last_message_text needs a string
             return "hi"
+        if "location.href" in script:
+            return "https://www.linkedin.com/messaging/"
         return True
 
-    monkeypatch.setattr(messaging, "evaluate", fake_evaluate)
+    monkeypatch.setattr(messaging, "evaluate_pinned", fake_evaluate)
     monkeypatch.setattr(messaging.time, "sleep", lambda s: None)
 
 

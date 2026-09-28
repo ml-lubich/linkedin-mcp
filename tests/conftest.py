@@ -39,7 +39,14 @@ def _default_single_messaging_tab(monkeypatch):
     monkeypatch.setattr(
         messaging_mod,
         "pages",
-        lambda port: [{"id": "msg", "url": "https://www.linkedin.com/messaging/", "title": "Messaging"}],
+        lambda port: [
+            {
+                "id": "msg",
+                "url": "https://www.linkedin.com/messaging/",
+                "title": "Messaging",
+                "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/page/msg",
+            }
+        ],
     )
 
 

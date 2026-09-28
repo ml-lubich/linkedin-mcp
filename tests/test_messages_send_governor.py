@@ -23,16 +23,18 @@ def config(tmp_path):
 
 @pytest.fixture(autouse=True)
 def _fake_cdp(monkeypatch):
-    def fake_evaluate(port, script, **kw):
+    def fake_evaluate_pinned(ws_url, script):
         if "insertText" in script:
             return True
+        if "location.href" in script:
+            return "https://www.linkedin.com/messaging/"
         if "getAttribute('disabled')" in script:
             return True
         if ".click(); return !!b" in script:
             return True
         return "delivered hello hi"
 
-    monkeypatch.setattr(core.messaging_mod, "evaluate", fake_evaluate)
+    monkeypatch.setattr(core.messaging_mod, "evaluate_pinned", fake_evaluate_pinned)
     monkeypatch.setattr(core.messaging_mod.time, "sleep", lambda s: None)
 
 
@@ -86,15 +88,16 @@ def test_no_governor_constructed_without_a_target(config, monkeypatch):
     assert captured.get("governor") is None
 
 
-# ---- H2: `to`-only paces without permanent dedupe; `target` still dedupes --
+# ---- H2/F1: `to`-only paces and dedupes the identical text within a
+# window; a *different* reply to the same person is never blocked --
 
 
-def test_two_confirmed_sends_with_the_same_to_both_reach_send_message(config, monkeypatch):
+def test_two_confirmed_sends_with_the_same_to_but_different_text_both_reach_send_message(config, monkeypatch):
     monkeypatch.setattr(core, "load_agent_config", lambda path=None: config)
     monkeypatch.setattr(core.messaging_mod, "select_thread", lambda port, name: {"ok": True, "ambiguous": False})
 
     core.messages_send("hi", to="John", confirm=True)
-    result = core.messages_send("hi", to="John", confirm=True)  # must not raise
+    result = core.messages_send("hello", to="John", confirm=True)  # different text -- must not raise
 
     assert result["sent"] is True
 
@@ -106,10 +109,10 @@ def test_budget_exhaustion_via_to_still_raises_rate_limited(config, monkeypatch)
     monkeypatch.setattr(core.messaging_mod, "select_thread", lambda port, name: {"ok": True, "ambiguous": False})
 
     limit, _window = LIMITS["message"]
-    for _ in range(limit):
-        core.messages_send("hi", to="John", confirm=True)
+    for i in range(limit):
+        core.messages_send(f"hi {i}", to="John", confirm=True)  # distinct text each time -- only budget applies
     with pytest.raises(RateLimited):
-        core.messages_send("hi", to="John", confirm=True)
+        core.messages_send("one more", to="John", confirm=True)
 
 
 def test_same_explicit_target_twice_is_rate_limited(config, monkeypatch):

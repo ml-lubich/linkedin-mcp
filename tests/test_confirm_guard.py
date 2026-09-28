@@ -31,7 +31,7 @@ def _wire_config(config, monkeypatch):
 
 @pytest.mark.parametrize("falsy_confirm", [False, 0, None, "", [], {}])
 def test_send_message_refuses_every_falsy_confirm_value(config, monkeypatch, falsy_confirm):
-    monkeypatch.setattr(messaging_mod, "evaluate", lambda *a, **k: True)
+    monkeypatch.setattr(messaging_mod, "evaluate_pinned", lambda *a, **k: True)
     with pytest.raises(SendNotConfirmedError):
         send_message("hello", config, confirm=falsy_confirm)
 
@@ -43,7 +43,7 @@ def test_send_message_never_calls_click_script_without_confirm(config, monkeypat
         calls.append(script)
         return True
 
-    monkeypatch.setattr(messaging_mod, "evaluate", fake_evaluate)
+    monkeypatch.setattr(messaging_mod, "evaluate_pinned", fake_evaluate)
     with pytest.raises(SendNotConfirmedError):
         send_message("hello", config, confirm=False)
     assert not any("msg-form__send-button" in c and ".click()" in c for c in calls)
@@ -53,7 +53,7 @@ def test_send_message_attachment_alone_does_not_send(config, monkeypatch):
     """Attaching a file without --confirm is "drafting with an attachment",
     not sending -- the send button must still never be clicked, and (see
     test_send_message_security.py) the attachment is never even staged."""
-    monkeypatch.setattr(messaging_mod, "evaluate", lambda *a, **k: True)
+    monkeypatch.setattr(messaging_mod, "evaluate_pinned", lambda *a, **k: True)
     monkeypatch.setattr(messaging_mod, "set_file_input", lambda *a, **k: True)
     with pytest.raises(SendNotConfirmedError):
         send_message("hello", config, confirm=False, attachment_path=config.referral.resume_path)
@@ -83,7 +83,7 @@ def test_publish_post_never_calls_post_click_script_without_confirm(config, monk
 def test_referral_propagates_unconfirmed_from_send_message(config, monkeypatch):
     monkeypatch.setattr(referral_mod, "open_thread", lambda *a, **k: None)
     monkeypatch.setattr(referral_mod, "read_thread", lambda *a, **k: {"bodies": ["hiring"], "speakers": []})
-    monkeypatch.setattr(messaging_mod, "evaluate", lambda *a, **k: True)
+    monkeypatch.setattr(messaging_mod, "evaluate_pinned", lambda *a, **k: True)
     monkeypatch.setattr(messaging_mod, "set_file_input", lambda *a, **k: True)
     with pytest.raises(SendNotConfirmedError):
         referral_mod.send_referral_for_candidate(

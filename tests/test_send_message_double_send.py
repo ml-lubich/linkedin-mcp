@@ -15,9 +15,11 @@ from linkedin_mcp.governor import Governor, RateLimited
 
 
 def test_multiline_text_with_different_rendered_whitespace_reports_sent(config, monkeypatch):
-    def fake_evaluate(port, script, **kw):
+    def fake_evaluate(ws_url, script):
         if "insertText" in script:
             return True
+        if "location.href" in script:
+            return "https://www.linkedin.com/messaging/"
         if "aria-disabled" in script:
             return True
         if ".click(); return !!b" in script:
@@ -30,7 +32,7 @@ def test_multiline_text_with_different_rendered_whitespace_reports_sent(config, 
             return True
         return ""
 
-    monkeypatch.setattr(messaging, "evaluate", fake_evaluate)
+    monkeypatch.setattr(messaging, "evaluate_pinned", fake_evaluate)
     monkeypatch.setattr(messaging.time, "sleep", lambda s: None)
 
     proof = messaging.send_message(
@@ -41,9 +43,11 @@ def test_multiline_text_with_different_rendered_whitespace_reports_sent(config, 
 
 
 def test_governor_records_on_the_confirmed_click_even_if_verification_never_matches(config, monkeypatch, tmp_path):
-    def fake_evaluate(port, script, **kw):
+    def fake_evaluate(ws_url, script):
         if "insertText" in script:
             return True
+        if "location.href" in script:
+            return "https://www.linkedin.com/messaging/"
         if "aria-disabled" in script:
             return True
         if ".click(); return !!b" in script:
@@ -54,7 +58,7 @@ def test_governor_records_on_the_confirmed_click_even_if_verification_never_matc
             return False  # compose never appears to clear either
         return ""
 
-    monkeypatch.setattr(messaging, "evaluate", fake_evaluate)
+    monkeypatch.setattr(messaging, "evaluate_pinned", fake_evaluate)
     monkeypatch.setattr(messaging.time, "sleep", lambda s: None)
     gov = Governor(tmp_path / "g.db", now=1_000_000.0)
 

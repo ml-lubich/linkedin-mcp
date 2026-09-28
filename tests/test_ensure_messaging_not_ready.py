@@ -11,7 +11,12 @@ import pytest
 from linkedin_mcp import messaging
 from linkedin_mcp.cdp_session import ChromeError
 
-_MESSAGING_TAB = {"id": "msg", "url": "https://www.linkedin.com/messaging/", "title": "Messaging"}
+_MESSAGING_TAB = {
+    "id": "msg",
+    "url": "https://www.linkedin.com/messaging/",
+    "title": "Messaging",
+    "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/page/msg",
+}
 
 
 def test_list_threads_raises_when_messaging_never_became_ready(monkeypatch):
@@ -38,7 +43,7 @@ def test_list_threads_proceeds_normally_when_ready(monkeypatch):
         "ensure_messaging",
         lambda port: {"action": "open", "opened": "navigated", "ok": True, "url": messaging.MESSAGING, "title": "", "ready": True},
     )
-    monkeypatch.setattr(messaging, "evaluate", lambda port, expr, **kw: {"threads": []})
+    monkeypatch.setattr(messaging, "evaluate_pinned", lambda ws_url, expr: {"threads": []})
 
     result = messaging.list_threads(9222, kind="threads")
 
@@ -54,7 +59,7 @@ def test_list_threads_no_navigate_skips_the_readiness_check(monkeypatch):
         raise AssertionError("no_navigate=True must not call ensure_messaging")
 
     monkeypatch.setattr(messaging, "ensure_messaging", boom)
-    monkeypatch.setattr(messaging, "evaluate", lambda port, expr, **kw: {"threads": []})
+    monkeypatch.setattr(messaging, "evaluate_pinned", lambda ws_url, expr: {"threads": []})
 
     result = messaging.list_threads(9222, kind="threads", no_navigate=True)
     assert result["threads"] == []

@@ -91,9 +91,11 @@ def test_send_referral_rate_limited_by_real_governor_on_repeat_url(config, monke
     monkeypatch.setattr(referral_mod, "read_thread", lambda *a, **k: {"bodies": ["hiring"], "speakers": []})
     monkeypatch.setattr(messaging_mod.time, "sleep", lambda s: None)
 
-    def fake_evaluate(port, script, **kw):
+    def fake_evaluate_pinned(ws_url, script):
         if "insertText" in script:
             return True
+        if "location.href" in script:
+            return "https://www.linkedin.com/messaging/"
         if "getAttribute('disabled')" in script:
             return True
         if ".click(); return !!b" in script:
@@ -104,7 +106,7 @@ def test_send_referral_rate_limited_by_real_governor_on_repeat_url(config, monke
             return True
         return ""
 
-    monkeypatch.setattr(messaging_mod, "evaluate", fake_evaluate)
+    monkeypatch.setattr(messaging_mod, "evaluate_pinned", fake_evaluate_pinned)
     monkeypatch.setattr(messaging_mod, "set_file_input", lambda *a, **k: True)
 
     url = "https://example.com/thread/rate-limit-me"
