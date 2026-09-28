@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from requests import exceptions as requests_exceptions
 
-from linkedin_cli.client import LinkedInClient
-from linkedin_cli.client import LinkedInClientError
-from linkedin_cli.config import load_config
+from linkedin_mcp.client import LinkedInClient
+from linkedin_mcp.client import LinkedInClientError
+from linkedin_mcp.voyager_config import load_config
 
 
 class _Session:
@@ -24,7 +24,7 @@ def test_retry_turns_redirect_loop_into_actionable_error(monkeypatch) -> None:
     }
 
     monkeypatch.setattr(
-        "linkedin_cli.client.probe_read_access",
+        "linkedin_mcp.client.probe_read_access",
         lambda session, config, public_id=None: {
             "voyager_feed": {"ok": False, "status_code": 302},
         },

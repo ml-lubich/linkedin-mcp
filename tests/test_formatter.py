@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from linkedin_cli.formatter import (
+from linkedin_mcp.formatter import (
     build_post_panel,
     build_post_table,
     build_profile_panel,

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from linkedin_cli.models import Actor
-from linkedin_cli.models import Post
-from linkedin_cli.models import Profile
-from linkedin_cli.serialization import posts_from_json
-from linkedin_cli.serialization import posts_to_json
-from linkedin_cli.serialization import profile_to_dict
+from linkedin_mcp.models import Actor
+from linkedin_mcp.models import Post
+from linkedin_mcp.models import Profile
+from linkedin_mcp.serialization import posts_from_json
+from linkedin_mcp.serialization import posts_to_json
+from linkedin_mcp.serialization import profile_to_dict
 
 
 def test_profile_to_dict_roundtrip_fields() -> None:

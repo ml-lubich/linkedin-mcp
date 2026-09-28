@@ -1,176 +1,152 @@
-# linkedin-cli
+# linkedin-mcp
 
-`linkedin-cli` is an unofficial terminal-first CLI for reading LinkedIn data and running a small set of authenticated actions from the shell.
+`linkedin-mcp` is an unofficial LinkedIn CLI **and MCP server** in one Python
+package. Every command and every MCP tool call the same shared core
+(`linkedin_mcp/core.py`), so the two surfaces never drift apart.
 
-It is built around a real LinkedIn web session, not OAuth. That makes it practical for personal automation, but it also means session handling, browser behavior, and endpoint stability matter.
+It consolidates two prior tools into one:
+- **[linkedin-cli](https://github.com/frizynn/linkedin-cli)** (by
+  [frizynn](https://github.com/frizynn), MIT) — the Voyager-API read/write
+  surface: `feed`, `search`, `profile`, `profile-posts`, `activity`, `post`,
+  `react`, `unreact`, `save`, `unsave`, `comment`. This repo forked that
+  project and built on top of it.
+- **[linkedin-agent](https://github.com/ml-lubich/linkedin-agent)** — the
+  CDP surface that drives your own already-logged-in Chrome for messaging,
+  referrals, and posting: `doctor`, `classify`, `post-cdp`, `messages`,
+  `referral`. That project is now absorbed into this one.
 
-## Status
+It is built around a real LinkedIn web session (Voyager) or your own
+logged-in Chrome (CDP) — not OAuth. That makes it practical for personal
+automation, but session handling, browser behavior, and endpoint stability
+all matter.
 
-This repository is usable today, but it is still early-stage software.
+## What it does
 
-Verified end-to-end against a live authenticated session:
-- `linkedin auth-status`
-- `linkedin feed`
-- `linkedin profile`
+**Voyager API surface** (a real session, `requests`/Playwright fallback):
+- Read the authenticated home feed, search people/posts, fetch a profile or
+  its posts, inspect an activity, emit JSON for scripting.
+- Write: publish a post, react/unreact, save/unsave, comment — all through a
+  Playwright browser-automation fallback.
 
-Implemented and covered by tests, but less battle-tested against live LinkedIn sessions:
-- `linkedin search`
-- `linkedin profile-posts`
-- `linkedin activity`
-- `linkedin post`
-- `linkedin react`
-- `linkedin unreact`
-- `linkedin save`
-- `linkedin unsave`
-- `linkedin comment`
+**CDP agent surface** (your own already-open, already-logged-in Chrome, via
+[own-chrome](https://github.com/ml-lubich/own-chrome)):
+- `doctor` — environment/session health check.
+- `classify` — is an inbound message hiring-shaped, excluded, already-referred?
+- `post-cdp draft` / `post-cdp publish` — lint-then-publish a feed post.
+- `messages read` / `messages send` — read/reply in the open thread, with an
+  optional file attachment.
+- `referral draft` / `referral send` — draft/send a referral message with a
+  resume attached, paced and deduped through a rate governor.
 
-## What It Does
+**MCP server** (`linkedin-mcp serve`): every command above as an MCP tool,
+for Claude/Cursor/any MCP client.
 
-Read operations:
-- Inspect your authenticated home feed
-- Fetch a profile by public identifier or LinkedIn profile URL
-- Search people and posts
-- Fetch posts from a profile
-- Inspect activity details
-- Emit machine-readable JSON for scripting
+## Confirm gate — nothing sends without it
 
-Write operations:
-- Publish a post through browser automation fallback
-- React or unreact to an activity
-- Save or unsave an activity
-- Comment on an activity
+Every write/send/publish command requires an explicit `--confirm` (CLI) or
+`confirm: true` (MCP tool). Two families, two mechanisms:
 
-Auth and runtime support:
-- Full `LINKEDIN_COOKIE_HEADER` support
-- Minimal `LINKEDIN_LI_AT` and `LINKEDIN_JSESSIONID` support
-- Browser cookie extraction from Chrome, Chromium, Brave, Edge, or Firefox
-- Optional Playwright browser fallback for fragile write flows
-- Proxy support
-
-## Important Notes
-
-- This project is unofficial and is not affiliated with LinkedIn.
-- LinkedIn can change internal web endpoints without notice. A command that works today may need adjustment later.
-- Session cookies are credentials. Treat them like passwords.
-- Do not use this project for spam, scraping at abusive rates, or anything that violates the platform rules that apply to your account.
+- **Voyager writes** (`post`, `react`, `unreact`, `save`, `unsave`, `comment`)
+  refuse instantly — `ConfirmRequiredError`, nothing touched — without it.
+- **CDP agent writes** (`post-cdp publish`, `messages send`, `referral send`)
+  still fill the browser compose box/composer as a preview, then refuse to
+  click Send/Post — `SendNotConfirmedError` — without it.
 
 ## Installation
 
-### Install from source
-
 ```bash
-git clone https://github.com/frizynn/linkedin-cli.git
-cd linkedin-cli
-uv sync
+git clone https://github.com/ml-lubich/linkedin-mcp.git
+cd linkedin-mcp
+uv tool install --force --from . linkedin-mcp
 ```
 
-### Install as a tool
+Installs two identical console scripts, `linkedin` and `linkedin-mcp`. If you
+previously had the standalone tools installed, remove them so their command
+names don't shadow this one:
 
 ```bash
-uv tool install .
+uv tool uninstall linkedin-cli
+uv tool uninstall linkedin-agent
 ```
 
-Alternative:
-
-```bash
-pipx install .
-```
-
-Install Playwright browsers if you want browser fallback support for write actions:
+Install Playwright's browser if you use the Voyager write fallback:
 
 ```bash
 uv run playwright install chromium
 ```
 
-## Quick Start
-
-### 1. Export your LinkedIn session
-
-The most reliable option is the full cookie header from a logged-in browser session.
-
-```bash
-export LINKEDIN_COOKIE_HEADER='li_at=...; JSESSIONID="ajax:..."; bcookie="..."; bscookie="..."; ...'
-```
-
-Then verify auth:
-
-```bash
-linkedin auth-status
-```
-
-Expected outcome for a healthy session:
-- `basic-probe=ok`
-- `voyager_me=ok:200`
-- `voyager_feed=ok:200`
-- `voyager_profile=ok:200`
-
-### 2. Read your feed
-
-```bash
-linkedin feed --max 10
-linkedin feed --max 10 --json
-```
-
-### 3. Inspect a profile
-
-```bash
-linkedin profile lebrero-juan-francisco
-linkedin profile https://www.linkedin.com/in/lebrero-juan-francisco/ --json
-```
-
-### 4. Search
-
-```bash
-linkedin search "AI engineer" --max 10
-linkedin search "MercadoLibre" --max 10 --json
-```
-
-## Authentication
-
-Authentication is resolved in this order:
-
-1. `LINKEDIN_COOKIE_HEADER`
-2. `LINKEDIN_LI_AT` + `LINKEDIN_JSESSIONID`
-3. Browser cookie extraction from a supported local browser
-
-### Recommended: full cookie header
-
-This is the most reliable option for authenticated reads.
-
-One practical way to obtain it:
-1. Log into `https://www.linkedin.com` in your browser.
-2. Open developer tools.
-3. Open the Network tab and reload the page.
-4. Select a request to `www.linkedin.com`.
-5. Copy the `cookie` request header value.
-6. Export it as `LINKEDIN_COOKIE_HEADER`.
+## Quick start (Voyager side)
 
 ```bash
 export LINKEDIN_COOKIE_HEADER='li_at=...; JSESSIONID="ajax:..."; ...'
 linkedin auth-status
+linkedin feed --max 10
+linkedin profile satyanadella
+linkedin search "AI engineer" --max 10
 ```
 
-### Minimal environment variables
+## Quick start (CDP agent side)
 
-This can be enough for some flows, but it is less reliable than the full cookie jar.
+Chrome must be listening on its debugging port (default `9222`); quit Chrome
+fully first, then (macOS, since Chrome 136+ ignores the flag on the default
+profile):
+
+```bash
+open -a "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir="$HOME/chrome-debug"
+```
+
+```bash
+linkedin doctor                                    # environment/session check
+linkedin messages read --limit 20                  # read the open thread
+linkedin messages send "thanks, that works" --confirm
+linkedin post-cdp draft "shipped a small thing this week"   # anti-cringe lint, no browser
+linkedin post-cdp publish "shipped a small thing this week" --confirm
+```
+
+Config for the CDP side lives at `~/.config/linkedin-agent/config.toml`
+(unchanged from linkedin-agent — copy `config.example.toml` from that repo).
+It holds the CDP port, your display name, the referral identity, and
+exclusion lists. Nothing personal is hardcoded here.
+
+## MCP server
+
+```bash
+linkedin-mcp serve   # stdio transport
+```
+
+Claude Code / Cursor config:
+
+```json
+{
+  "mcpServers": {
+    "linkedin": { "command": "linkedin-mcp", "args": ["serve"] }
+  }
+}
+```
+
+21 tools are exposed, one per CLI command (dashes/spaces -> underscores),
+except `serve` (starts the server itself) and `auth env` (the one command
+that reads a raw cookie value back out — never exposed as a tool; capture the
+session with the `auth_capture` tool or `linkedin auth capture` instead).
+`tests/test_mcp_parity.py` fails the build if a command and its tool ever
+drift apart.
+
+## Authentication (Voyager side)
+
+Resolved in this order:
+
+1. `LINKEDIN_COOKIE_HEADER` (most reliable)
+2. `LINKEDIN_LI_AT` + `LINKEDIN_JSESSIONID`
+3. Browser cookie extraction (Chrome, Chromium, Brave, Edge, Firefox)
+4. `linkedin auth capture` — CDP-based, for Chrome 127+, where its app-bound
+   cookie encryption blocks #3. Polls a CDP-attached Chrome until logged in,
+   then saves the cookie to `~/.config/linkedin-mcp/cookies` (mode `0600`).
+   Never prints a cookie value. `linkedin auth env` is the one command that
+   does, deliberately, to export `LINKEDIN_COOKIE_HEADER`.
 
 ```bash
 export LINKEDIN_LI_AT='AQ...'
 export LINKEDIN_JSESSIONID='"ajax:123456789"'
-```
-
-### Browser cookie extraction
-
-If you are logged into LinkedIn locally, the CLI can try to extract cookies from:
-- Chrome
-- Chromium
-- Brave
-- Edge
-- Firefox
-
-Optional environment variables:
-
-```bash
 export LINKEDIN_BROWSER='chrome'
 export LINKEDIN_HEADLESS='1'
 export LINKEDIN_PROXY='http://127.0.0.1:7890'
@@ -181,32 +157,39 @@ export LINKEDIN_CONFIG="$PWD/config.yaml"
 
 ```bash
 linkedin auth-status
+linkedin auth capture
+linkedin auth env
 linkedin feed --max 20 --json
 linkedin search "product manager" --max 10
 linkedin profile satyanadella --json
 linkedin profile-posts satyanadella --max 20
 linkedin activity urn:li:activity:123
-linkedin post "hello from linkedin-cli"
-linkedin react urn:li:activity:123 --type like
-linkedin unreact urn:li:activity:123
-linkedin save urn:li:activity:123
-linkedin unsave urn:li:activity:123
-linkedin comment urn:li:activity:123 "nice post"
+linkedin post "hello from linkedin-mcp" --confirm
+linkedin react urn:li:activity:123 --type like --confirm
+linkedin unreact urn:li:activity:123 --confirm
+linkedin save urn:li:activity:123 --confirm
+linkedin unsave urn:li:activity:123 --confirm
+linkedin comment urn:li:activity:123 "nice post" --confirm
+linkedin doctor
+linkedin classify "InMail: Senior AI Engineer role" --name "Jordan Lee"
+linkedin post-cdp draft "..."
+linkedin post-cdp publish "..." --confirm
+linkedin messages read --limit 40
+linkedin messages send "..." --confirm
+linkedin referral draft "Jordan Lee" "..." --headline "Talent @ Acme"
+linkedin referral send "Jordan Lee" "<thread url>" --confirm
+linkedin-mcp serve
 ```
 
-## Codex Skills
+## Skill
 
-This repository ships public Codex skills in [`skills/`](./skills/):
+This repo ships one Codex/Claude skill in [`skills/linkedin-mcp/`](./skills/linkedin-mcp/)
+covering command selection, the confirm gate, auth troubleshooting, and write
+workflows for both surfaces.
 
-- `linkedin-cli` for general command selection, read workflows, and JSON export
-- `linkedin-cli-auth` for cookies, auth diagnostics, browser extraction, and config
-- `linkedin-cli-write` for posting, reacting, saving, unsaving, and commenting
+## Configuration (Voyager side)
 
-These skills are intended to stay in-repo so anyone cloning the project can reuse the same operational guidance.
-
-## Configuration
-
-The repository includes a sample [`config.yaml`](./config.yaml). The default shape is:
+The repository includes a sample [`config.yaml`](./config.yaml):
 
 ```yaml
 fetch:
@@ -232,43 +215,39 @@ rate_limit:
 
 ## Development
 
-Set up a local development environment:
-
 ```bash
 uv sync --extra dev
 uv run playwright install chromium
 ```
 
-Run checks:
+Run checks (see [`docs/TESTING.md`](./docs/TESTING.md) for the full gate):
 
 ```bash
 uv run ruff check .
-uv run pytest -q
-uv run python -m compileall linkedin_cli tests
+uv run pytest -q --cov=linkedin_mcp
 ```
 
-## Testing Philosophy
+## Important notes
 
-- Unit tests should not depend on a live LinkedIn session.
-- Network-sensitive behavior should be isolated behind transport or browser abstractions and mocked in tests.
-- Live-session verification is still useful before releases, especially for auth, feed, and profile flows.
+- Unofficial, not affiliated with LinkedIn.
+- LinkedIn can change internal web endpoints without notice.
+- Session cookies are credentials. Treat them like passwords — never commit
+  them, print them, or paste them into an issue/PR.
+- Never invent a referral target, resume, or pitch — they come only from
+  config/env vars.
+- Do not use this for spam, scraping at abusive rates, or automating
+  repeated posting/engagement loops.
 
 ## Security and Privacy
-
-- Never commit cookies, tokens, HAR files, or browser state exports.
-- Never paste live `LINKEDIN_COOKIE_HEADER`, `li_at`, or `JSESSIONID` values into issues or pull requests.
-- Sanitize screenshots, logs, and terminal transcripts before sharing.
 
 See [`SECURITY.md`](./SECURITY.md) for reporting guidance.
 
 ## Contributing
 
-Contributions are welcome. Before opening a pull request, read:
-- [`CONTRIBUTING.md`](./CONTRIBUTING.md)
-- [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md)
-- [`SECURITY.md`](./SECURITY.md)
-- [`CHANGELOG.md`](./CHANGELOG.md)
+Before opening a pull request, read [`CONTRIBUTING.md`](./CONTRIBUTING.md),
+[`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md), and [`SECURITY.md`](./SECURITY.md).
 
 ## License
 
-This project is released under the [MIT License](./LICENSE).
+MIT. See [`LICENSE`](./LICENSE). Portions of this project originate from
+[frizynn/linkedin-cli](https://github.com/frizynn/linkedin-cli) (MIT).

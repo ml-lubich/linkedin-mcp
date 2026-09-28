@@ -5,10 +5,10 @@ import json
 from requests import Response
 from requests.cookies import RequestsCookieJar
 
-from linkedin_cli.auth import AuthSession
-from linkedin_cli.config import load_config
-from linkedin_cli.transport import LinkedInVoyagerTransport
-from linkedin_cli.transport import _classify_redirect
+from linkedin_mcp.auth import AuthSession
+from linkedin_mcp.voyager_config import load_config
+from linkedin_mcp.transport import LinkedInVoyagerTransport
+from linkedin_mcp.transport import _classify_redirect
 
 
 def _response(status_code: int, *, url: str, location: str | None = None, set_cookie: str = "") -> Response:

@@ -24,7 +24,7 @@ uv run playwright install chromium
 ```bash
 uv run ruff check .
 uv run pytest -q
-uv run python -m compileall linkedin_cli tests
+uv run python -m compileall linkedin_mcp tests
 ```
 
 If you change CLI behavior, add or update tests in `tests/` and update documentation in the same pull request.

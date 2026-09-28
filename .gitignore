@@ -10,6 +10,8 @@ __pycache__/
 .env.*
 .coverage
 coverage.xml
+.omc/
+.hypothesis/
 dist/
 build/
 *.egg-info/

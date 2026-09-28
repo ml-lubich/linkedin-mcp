@@ -7,7 +7,7 @@
 
 - [ ] `uv run ruff check .`
 - [ ] `uv run pytest -q`
-- [ ] `uv run python -m compileall linkedin_cli tests`
+- [ ] `uv run python -m compileall linkedin_mcp tests`
 - [ ] manual verification performed when the change touches live LinkedIn behavior
 
 ## Checklist
