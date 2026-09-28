@@ -131,3 +131,43 @@ def test_referral_send_tool_delegates(monkeypatch):
     result = _run(mcp.call_tool("referral_send", {"name": "Jordan", "url": "https://x", "confirm": True}))
     assert result.is_error is False
     assert captured["confirm"] is True
+
+
+# ---- messaging tools absorbed from `li` (Phase 2) -------------------------
+
+
+def test_messages_select_tool_delegates(monkeypatch) -> None:
+    monkeypatch.setattr(core, "messages_select", lambda name, **k: {"ok": True, "matched": name})
+    result = _run(mcp.call_tool("messages_select", {"name": "Jordan"}))
+    assert result.is_error is False
+    import json as _json
+    assert _json.loads(result.content[0].text)["matched"] == "Jordan"
+
+
+def test_messages_threads_tool_delegates(monkeypatch) -> None:
+    captured = {}
+    monkeypatch.setattr(core, "messages_threads", lambda **k: captured.update(k) or {"threads": []})
+    result = _run(mcp.call_tool("messages_threads", {"filter": "acme", "unread": True}))
+    assert result.is_error is False
+    assert captured["needle"] == "acme"
+    assert captured["unread"] is True
+
+
+def test_scan_tool_converts_dataclasses(monkeypatch) -> None:
+    from linkedin_mcp.scan import Candidate
+
+    monkeypatch.setattr(core, "scan", lambda **k: {"Jordan": Candidate(name="Jordan", url="u", unread=True, text="hi")})
+    result = _run(mcp.call_tool("scan", {}))
+    assert result.is_error is False
+    import json as _json
+    assert _json.loads(result.content[0].text)["Jordan"]["unread"] is True
+
+
+def test_messages_workflow_tool_never_sends(monkeypatch, tmp_path) -> None:
+    spec = tmp_path / "spec.json"
+    spec.write_text("{}")
+    monkeypatch.setattr(core, "messages_workflow", lambda spec_path, **k: {"go": False, "sent": False})
+    result = _run(mcp.call_tool("messages_workflow", {"spec_path": str(spec)}))
+    assert result.is_error is False
+    import json as _json
+    assert _json.loads(result.content[0].text)["sent"] is False

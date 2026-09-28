@@ -22,8 +22,10 @@ from . import classify as classify_mod
 from . import copywriter as copywriter_mod
 from . import doctor as doctor_mod
 from . import messaging as messaging_mod
+from . import messages_actions as messages_actions_mod
 from . import post_cdp as post_cdp_mod
 from . import referral as referral_mod
+from . import scan as scan_mod
 from .agent_config import Config as AgentConfig
 from .agent_config import load_config as load_agent_config
 from .auth import collect_auth_diagnostics
@@ -164,6 +166,7 @@ def messages_read(
 
 def messages_send(
     text: str,
+    to: str = "",
     attach: Optional[str] = None,
     attach_name: Optional[str] = None,
     target: str = "",
@@ -171,7 +174,14 @@ def messages_send(
     port: Optional[int] = None,
     config_path: Optional[str] = None,
 ) -> dict:
+    """Type `text` into the compose box and, only with confirm=True, send.
+    With `to`, selects that thread by name first (absorbed from `li tell`);
+    without it, types into whatever thread is already open (the original
+    linkedin-agent behavior)."""
     config = _agent_config(config_path)
+    if to:
+        cdp_port = port if port is not None else config.cdp_port
+        messaging_mod.select_thread(cdp_port, to)
     return messaging_mod.send_message(
         text=text,
         config=config,
@@ -181,6 +191,55 @@ def messages_send(
         port=port,
         target=target,
     )
+
+
+def messages_threads(
+    needle: str = "",
+    limit: int = 20,
+    unread: bool = False,
+    no_navigate: bool = False,
+    port: Optional[int] = None,
+    config_path: Optional[str] = None,
+) -> dict:
+    config = _agent_config(config_path)
+    cdp_port = port if port is not None else config.cdp_port
+    return messaging_mod.list_threads(cdp_port, kind="unread" if unread else "threads", needle=needle, limit=limit, no_navigate=no_navigate)
+
+
+def messages_select(name: str, port: Optional[int] = None, config_path: Optional[str] = None) -> dict:
+    config = _agent_config(config_path)
+    cdp_port = port if port is not None else config.cdp_port
+    return messaging_mod.select_thread(cdp_port, name)
+
+
+def messages_open(port: Optional[int] = None, config_path: Optional[str] = None) -> dict:
+    config = _agent_config(config_path)
+    cdp_port = port if port is not None else config.cdp_port
+    return messaging_mod.ensure_messaging(cdp_port)
+
+
+def messages_popups(
+    apply: bool = False, port: Optional[int] = None, config_path: Optional[str] = None
+) -> dict:
+    config = _agent_config(config_path)
+    cdp_port = port if port is not None else config.cdp_port
+    return messaging_mod.popups(cdp_port, apply=apply, policy=None)
+
+
+def messages_workflow(spec_path: str, text: str = "", port: Optional[int] = None, config_path: Optional[str] = None) -> dict:
+    """Classify the open thread (or `text`) and draft a reply. Never sends."""
+    return messaging_mod.workflow_run(spec_path, text=text, port=port)
+
+
+def messages_commands() -> dict:
+    """List the `messages` agent verbs. No browser."""
+    return {"commands": [dict(row) for row in messages_actions_mod.COMMANDS]}
+
+
+def scan(port: Optional[int] = None, config_path: Optional[str] = None) -> dict:
+    """Find threads that still need a reply/referral."""
+    config = _agent_config(config_path)
+    return scan_mod.find_referral_candidates(config, port=port)
 
 
 def referral_draft(

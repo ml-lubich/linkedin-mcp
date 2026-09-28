@@ -382,6 +382,26 @@ def doctor(
 
 
 @app.command()
+def scan(
+    ctx: typer.Context,
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
+) -> None:
+    """Find threads that still need a reply/referral."""
+    import dataclasses
+
+    candidates = core.scan(config_path=_config_path(ctx))
+    as_dicts = {
+        name: (dataclasses.asdict(c) if dataclasses.is_dataclass(c) else c) for name, c in candidates.items()
+    }
+    if as_json:
+        typer.echo(to_json(as_dicts))
+        return
+    for name, candidate in as_dicts.items():
+        status = "unread" if candidate.get("unread") else "read"
+        console.print(f"{name}\t{status}\t{candidate.get('url', '')}")
+
+
+@app.command()
 def classify(
     text: str,
     name: str = typer.Option("", "--name"),
@@ -427,6 +447,53 @@ def post_cdp_publish_cmd(
     console.print(build_status_panel("Post published", bool(result.get("clicked_post")), str(result)))
 
 
+@messages_app.command("open")
+def messages_open_cmd(as_json: bool = typer.Option(False, "--json")) -> None:
+    """Open LinkedIn messaging in the attached Chrome. Creates a tab if needed."""
+    info = core.messages_open()
+    if as_json:
+        typer.echo(to_json(info))
+        return
+    console.print(build_status_panel("Messaging", bool(info.get("ok")), info.get("url", "")))
+
+
+@messages_app.command("threads")
+def messages_threads_cmd(
+    filter_: str = typer.Option("", "--filter", help="Case-insensitive match on name or preview."),
+    limit: int = typer.Option(20, "--limit"),
+    unread: bool = typer.Option(False, "--unread", help="Only unread threads."),
+    no_navigate: bool = typer.Option(False, "--no-navigate", help="Read the current tab; do not open messaging."),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """List messaging threads."""
+    data = core.messages_threads(needle=filter_, limit=limit, unread=unread, no_navigate=no_navigate)
+    if as_json:
+        typer.echo(to_json(data))
+        return
+    for thread in data.get("threads") or []:
+        mark = " *" if thread.get("unread") else ""
+        console.print(f"- {thread.get('name', '')}{mark}  {(thread.get('preview') or '')[:80]}")
+    if filter_ and not data.get("threads"):
+        raise typer.Exit(2)
+
+
+@messages_app.command("select")
+def messages_select_cmd(
+    name: str = typer.Argument(help="Thread name, or a unique piece of it."),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Open the one thread whose name contains NAME. Exits 2 if none match, 3 if several match."""
+    result = core.messages_select(name)
+    if as_json:
+        typer.echo(to_json(result))
+    else:
+        console.print(build_status_panel("select", bool(result.get("ok")), result.get("matched", "")))
+    if result.get("ambiguous"):
+        raise typer.Exit(3)
+    if not result.get("ok"):
+        raise typer.Exit(2)
+
+
 @messages_app.command("read")
 def messages_read_cmd(
     url: str = typer.Option("", "--url"),
@@ -445,15 +512,16 @@ def messages_read_cmd(
 @messages_app.command("send")
 def messages_send_cmd(
     text: str,
+    to: str = typer.Option("", "--to", help="Select this thread by name before typing."),
     attach: Optional[str] = typer.Option(None, "--attach"),
     attach_name: Optional[str] = typer.Option(None, "--attach-name"),
     target: str = typer.Option("", "--target", help="Recipient/thread identity for pacing (governor)."),
     confirm: bool = typer.Option(False, "--confirm", help="Actually click Send. Without this, nothing is sent."),
     as_json: bool = typer.Option(False, "--json"),
 ) -> None:
-    """Fill the compose box and, only with --confirm, send."""
+    """Select a thread by --to (if given) and type TEXT. Sends only with --confirm."""
     try:
-        proof = core.messages_send(text, attach=attach, attach_name=attach_name, target=target, confirm=confirm)
+        proof = core.messages_send(text, to=to, attach=attach, attach_name=attach_name, target=target, confirm=confirm)
     except Exception as exc:
         _handle_error(exc)
         return
@@ -461,6 +529,45 @@ def messages_send_cmd(
         typer.echo(to_json(proof))
         return
     console.print(build_status_panel("Message sent", bool(proof.get("sent")), str(proof)))
+
+
+@messages_app.command("popups")
+def messages_popups_cmd(
+    apply: bool = typer.Option(False, "--apply", help="Click the configured button. Default policy declines."),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Report the open LinkedIn dialog. Without --apply, nothing is clicked."""
+    result = core.messages_popups(apply=apply)
+    if as_json:
+        typer.echo(to_json(result))
+        return
+    console.print(build_status_panel("popups", True, str(result)))
+
+
+@messages_app.command("workflow")
+def messages_workflow_cmd(
+    spec: str = typer.Argument(help="Path to the workflow JSON."),
+    text: str = typer.Option("", "--text", help="Thread text. Default is the open thread."),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Classify the open thread and draft a reply. Never sends -- sent is always false."""
+    result = core.messages_workflow(spec, text=text)
+    if as_json:
+        typer.echo(to_json(result))
+        raise typer.Exit(0 if result.get("go") or result.get("reason") == "regex miss" else 2)
+    console.print(build_status_panel("workflow", bool(result.get("go")), str(result)))
+    raise typer.Exit(0 if result.get("go") or result.get("reason") == "regex miss" else 2)
+
+
+@messages_app.command("commands")
+def messages_commands_cmd(as_json: bool = typer.Option(False, "--json")) -> None:
+    """List the `messages` agent verbs. No browser."""
+    result = core.messages_commands()
+    if as_json:
+        typer.echo(to_json(result))
+        return
+    for row in result["commands"]:
+        console.print(f"{row['name']}\t{row['summary']}")
 
 
 @referral_app.command("draft")

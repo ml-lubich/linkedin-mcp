@@ -24,6 +24,12 @@ It absorbs two prior tools:
   `unreact`, `save`, `unsave`, `comment`.
 - `linkedin-agent` (ml-lubich) — the CDP surface driving the user's own
   logged-in Chrome: `doctor`, `classify`, `post-cdp`, `messages`, `referral`.
+- own-chrome's `li` CLI — its LinkedIn messaging surface (thread listing,
+  select, popups, the classify-then-draft workflow) is now `messages
+  threads|select|open|popups|workflow|commands`; `scan` (referral
+  candidates) is restored on top of it. own-chrome no longer ships `li`'s
+  LinkedIn code; this package may still import only `own_chrome.cdp`
+  (enforced by `tests/test_own_chrome_import_boundary.py`).
 
 ## Runtime entry points
 
@@ -78,8 +84,15 @@ complete. Stop if it reports not-ok — a `/login` tab means stop, not retry.
 | Classify a recruiter message | `linkedin classify "<text>" --name "Jordan"` |
 | Lint a post draft (no browser) | `linkedin post-cdp draft "<text>"` |
 | Publish via your own Chrome (CDP) | `linkedin post-cdp publish "<text>" --confirm` |
+| List agent verbs for messaging | `linkedin messages commands --json` |
+| Open messaging (creates a tab if needed) | `linkedin messages open` |
+| List / filter threads | `linkedin messages threads --filter NAME --limit 5 [--unread]` |
+| Select one thread by name | `linkedin messages select "NAME"` |
 | Read the open message thread | `linkedin messages read --limit 40` |
-| Send a message (CDP) | `linkedin messages send "<text>" --confirm` |
+| Send a message (CDP, optionally select first) | `linkedin messages send "<text>" [--to "NAME"] --confirm` |
+| Report/dismiss the open dialog | `linkedin messages popups [--apply]` |
+| Classify-then-draft the open thread (never sends) | `linkedin messages workflow spec.json` |
+| Find threads needing a reply/referral | `linkedin scan` |
 | Draft a referral (no browser) | `linkedin referral draft "Jordan" "<inbound text>"` |
 | Send a referral (text + resume) | `linkedin referral send "Jordan" "<thread url>" --confirm` |
 

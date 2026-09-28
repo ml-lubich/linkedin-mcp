@@ -134,6 +134,31 @@ def post_cdp_publish(
 
 
 @mcp.tool()
+def messages_open(port: Optional[int] = None, config_path: Optional[str] = None) -> dict:
+    """Open LinkedIn messaging in the attached Chrome. Creates a tab if needed."""
+    return core.messages_open(port=port, config_path=config_path)
+
+
+@mcp.tool()
+def messages_threads(
+    filter: str = "",
+    max: int = 20,
+    unread: bool = False,
+    no_navigate: bool = False,
+    port: Optional[int] = None,
+    config_path: Optional[str] = None,
+) -> dict:
+    """List messaging threads, optionally filtered or unread-only."""
+    return core.messages_threads(needle=filter, limit=max, unread=unread, no_navigate=no_navigate, port=port, config_path=config_path)
+
+
+@mcp.tool()
+def messages_select(name: str, port: Optional[int] = None, config_path: Optional[str] = None) -> dict:
+    """Open the one thread whose name contains `name`. Ambiguous/no-match reported, not raised."""
+    return core.messages_select(name, port=port, config_path=config_path)
+
+
+@mcp.tool()
 def messages_read(url: str = "", max: int = 40, port: Optional[int] = None, config_path: Optional[str] = None) -> dict:
     """Read the open LinkedIn message thread (or one named by url)."""
     return core.messages_read(url=url, limit=max, port=port, config_path=config_path)
@@ -142,6 +167,7 @@ def messages_read(url: str = "", max: int = 40, port: Optional[int] = None, conf
 @mcp.tool()
 def messages_send(
     text: str,
+    to: str = "",
     attach: Optional[str] = None,
     attach_name: Optional[str] = None,
     target: str = "",
@@ -149,10 +175,37 @@ def messages_send(
     port: Optional[int] = None,
     config_path: Optional[str] = None,
 ) -> dict:
-    """Fill the compose box and, only with confirm=True, send. Requires confirm=True."""
+    """Select a thread by `to` (if given) and type text. Sends only with confirm=True."""
     return core.messages_send(
-        text, attach=attach, attach_name=attach_name, target=target, confirm=confirm, port=port, config_path=config_path
+        text, to=to, attach=attach, attach_name=attach_name, target=target, confirm=confirm, port=port, config_path=config_path
     )
+
+
+@mcp.tool()
+def messages_popups(apply: bool = False, port: Optional[int] = None, config_path: Optional[str] = None) -> dict:
+    """Report the open LinkedIn dialog. Without apply=True, nothing is clicked."""
+    return core.messages_popups(apply=apply, port=port, config_path=config_path)
+
+
+@mcp.tool()
+def messages_workflow(spec_path: str, text: str = "", port: Optional[int] = None, config_path: Optional[str] = None) -> dict:
+    """Classify the open thread (or `text`) and draft a reply. Never sends."""
+    return core.messages_workflow(spec_path, text=text, port=port, config_path=config_path)
+
+
+@mcp.tool()
+def messages_commands() -> dict:
+    """List the `messages` agent verbs. No browser."""
+    return core.messages_commands()
+
+
+@mcp.tool()
+def scan(port: Optional[int] = None, config_path: Optional[str] = None) -> dict:
+    """Find threads that still need a reply/referral."""
+    import dataclasses
+
+    candidates = core.scan(port=port, config_path=config_path)
+    return {name: (dataclasses.asdict(c) if dataclasses.is_dataclass(c) else c) for name, c in candidates.items()}
 
 
 @mcp.tool()
