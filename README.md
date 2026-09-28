@@ -29,17 +29,31 @@ all matter.
   Playwright browser-automation fallback.
 
 **CDP agent surface** (your own already-open, already-logged-in Chrome, via
-[own-chrome](https://github.com/ml-lubich/own-chrome)):
+[own-chrome](https://github.com/ml-lubich/own-chrome)'s `own_chrome.cdp`
+only — see `tests/test_own_chrome_import_boundary.py`):
 - `doctor` — environment/session health check.
 - `classify` — is an inbound message hiring-shaped, excluded, already-referred?
 - `post-cdp draft` / `post-cdp publish` — lint-then-publish a feed post.
-- `messages read` / `messages send` — read/reply in the open thread, with an
-  optional file attachment.
+- `messages open/threads/select/read/send/popups/workflow/commands` —
+  open messaging, list/filter threads, select one by name, read it, reply
+  (with an optional file attachment), handle a dialog, classify-then-draft.
+- `scan` — threads that still need a reply/referral.
 - `referral draft` / `referral send` — draft/send a referral message with a
   resume attached, paced and deduped through a rate governor.
 
 **MCP server** (`linkedin-mcp serve`): every command above as an MCP tool,
 for Claude/Cursor/any MCP client.
+
+### Migrating from own-chrome's `li`
+
+own-chrome dropped its LinkedIn messaging CLI (`li`); this absorbed it as
+`linkedin messages ...` (see the command map below for the 1:1 mapping).
+Two `li` commands were not carried over:
+- `inbox` / `status` → both were aliases for `threads`; use
+  `messages threads [--unread]` instead.
+- `queries` / `query` → a generic JS query runner over the page (arbitrary
+  read of title/url/threads/read by name) — out of scope here; the fixed
+  set of reads above (`threads`, `read`) covers what this package needs.
 
 ## Confirm gate — nothing sends without it
 

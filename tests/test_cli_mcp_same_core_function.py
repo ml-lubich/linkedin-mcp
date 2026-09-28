@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 
+import typer
 from typer.testing import CliRunner
 
 import linkedin_mcp.core as core
@@ -16,6 +17,11 @@ from linkedin_mcp.cli import app
 from linkedin_mcp.mcp_server import mcp
 
 runner = CliRunner()
+
+# Commands with no MCP tool at all (test_mcp_parity.py's CLI_ONLY) or that
+# genuinely take no config_path (test_cli_config_passthrough.py's
+# NO_CONFIG_NEEDED) -- neither belongs in this same-core-function check.
+NOT_APPLICABLE = {"serve", "auth_env", "auth_capture", "post_cdp_draft", "messages_commands"}
 
 
 def _run(coro):
@@ -29,6 +35,12 @@ CASES = [
     (["profile", "jane"], "profile", {"identifier": "jane"}, "get_profile", None),
     (["profile-posts", "jane"], "profile_posts", {"identifier": "jane"}, "get_profile_posts", []),
     (["activity", "u1"], "activity", {"identifier": "u1"}, "get_activity", None),
+    (["post", "hi", "--confirm"], "post", {"text": "hi", "confirm": True}, "publish_post", "posted"),
+    (["react", "u1", "--confirm"], "react", {"identifier": "u1", "confirm": True}, "react", "reacted"),
+    (["unreact", "u1", "--confirm"], "unreact", {"identifier": "u1", "confirm": True}, "unreact", "unreacted"),
+    (["save", "u1", "--confirm"], "save", {"identifier": "u1", "confirm": True}, "save_activity", "saved"),
+    (["unsave", "u1", "--confirm"], "unsave", {"identifier": "u1", "confirm": True}, "unsave_activity", "unsaved"),
+    (["comment", "u1", "hi", "--confirm"], "comment", {"identifier": "u1", "text": "hi", "confirm": True}, "comment", "commented"),
     (["auth-status"], "auth_status", {}, "auth_diagnostics", {"ok": True}),
     (["doctor"], "doctor", {}, "doctor", {"ok": True, "checks": []}),
     (["classify", "hi"], "classify", {"text": "hi"}, "classify_message", {"hiring": False, "excluded": False, "exclude_reason": "", "already_referred": False}),
@@ -46,6 +58,38 @@ CASES = [
     (["referral", "send", "Jordan", "https://x", "--confirm"], "referral_send", {"name": "Jordan", "url": "https://x", "confirm": True}, "referral_send", {"name": "Jordan", "skipped": "", "draft": "hi", "proof": {"sent": True}}),
     (["scan"], "scan", {}, "scan", {}),
 ]
+
+
+def _cli_command_names() -> set[str]:
+    """Same tree walk as test_mcp_parity.py's _cli_command_names()."""
+    group = typer.main.get_command(app)
+    names: set[str] = set()
+
+    def walk(cmd, prefix: str) -> None:
+        sub_commands = getattr(cmd, "commands", None)
+        if sub_commands:
+            for sub_name, sub_cmd in sub_commands.items():
+                walk(sub_cmd, f"{prefix}_{sub_name}" if prefix else sub_name)
+        else:
+            names.add(prefix.replace("-", "_"))
+
+    walk(group, "")
+    names.discard("")
+    return names
+
+
+_GROUPS = {"messages", "referral", "post-cdp", "auth"}
+
+
+def test_every_cli_command_is_covered_or_not_applicable() -> None:
+    covered = set()
+    for argv, *_ in CASES:
+        if argv[0] in _GROUPS:
+            covered.add(f"{argv[0]}_{argv[1]}".replace("-", "_"))
+        else:
+            covered.add(argv[0].replace("-", "_"))
+    missing = _cli_command_names() - covered - NOT_APPLICABLE
+    assert not missing, f"CLI commands not covered by CASES and not in NOT_APPLICABLE: {sorted(missing)}"
 
 
 def test_cli_and_mcp_tool_hit_the_same_core_function_with_the_same_config_path(monkeypatch) -> None:

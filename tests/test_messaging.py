@@ -129,7 +129,12 @@ def test_send_message_with_governor_checks_before_sending(config, monkeypatch, t
     gov.close()
 
 
-def test_send_message_governor_not_recorded_when_send_fails_verification(config, monkeypatch, tmp_path):
+def test_send_message_governor_recorded_on_click_even_when_verification_fails(config, monkeypatch, tmp_path):
+    # Updated for review M1: the click already happened by this point, so a
+    # retry to the same target risks an actual duplicate send even when
+    # verification reports a false "not sent" -- the governor now records
+    # right after the confirmed click, not gated on verification succeeding.
+    # See test_send_message_double_send.py for the full regression coverage.
     from linkedin_mcp.governor import Governor
 
     def fake_evaluate(port, script, **kw):
@@ -150,7 +155,7 @@ def test_send_message_governor_not_recorded_when_send_fails_verification(config,
         verify_attempts=1, verify_wait_seconds=0,
     )
     assert proof["sent"] is False
-    assert not gov.already_done("message", "bob")  # never recorded since it never actually sent
+    assert gov.already_done("message", "bob")  # recorded on the click, not gated on verification
     gov.close()
 
 

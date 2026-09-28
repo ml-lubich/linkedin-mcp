@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import time
 import urllib.error
@@ -149,6 +150,14 @@ def _click_send(port: int, url_contains: str) -> None:
     evaluate(port, script, url_contains=url_contains)
 
 
+def _normalize_for_comparison(text: str) -> str:
+    """Collapse whitespace runs and strip, case-insensitively -- LinkedIn's
+    rendered innerText can differ from the raw sent text in exactly these
+    ways (extra/missing blank lines, trailing spaces), which would
+    otherwise make a real send look like a false "not sent"."""
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
 def _last_message_text(port: int, url_contains: str) -> str:
     script = (
         "(() => {const items = document.querySelectorAll('.msg-s-event-listitem');"
@@ -243,25 +252,36 @@ def send_message(
         raise ChromeError("send button is disabled; not sending")
     _click_send(cdp_port, target_url)
 
+    # Record right after the confirmed click, not gated on verification
+    # succeeding below: the click already happened, so a retry from here on
+    # risks an actual duplicate send even if verification reports a false
+    # "not sent" (rendering differences, a slow DOM update, ...). Whether
+    # verification itself succeeded is still reported separately as
+    # proof["sent"].
+    if governor is not None and target:
+        if dedupe:
+            governor.record(action, target)
+        else:
+            governor.record_paced(action)
+
     proof = {"last_has_hint": False, "compose_empty": False}
     # Without an attachment, verify against the text that was actually sent
     # -- "any non-empty last message" would also pass for a stale, unrelated
     # older message that was already in the thread before this call.
-    hint = (attachment_name_hint or text).strip().lower()
+    # Whitespace is normalized on both sides: LinkedIn's rendered innerText
+    # can collapse/add whitespace runs differently than the raw sent text
+    # (multi-line messages especially), which would otherwise read as a
+    # false "not sent" for a message that really did go out.
+    hint = _normalize_for_comparison(attachment_name_hint or text)
     for _ in range(verify_attempts):
         time.sleep(verify_wait_seconds)
-        last_text = _last_message_text(cdp_port, target_url).lower()
+        last_text = _normalize_for_comparison(_last_message_text(cdp_port, target_url))
         proof["compose_empty"] = _compose_is_empty(cdp_port, target_url)
         proof["last_has_hint"] = (hint in last_text) if hint else bool(last_text)
         if proof["last_has_hint"] and proof["compose_empty"]:
             break
     proof["attached"] = attached
     proof["sent"] = bool(proof["last_has_hint"] and proof["compose_empty"])
-    if governor is not None and target and proof["sent"]:
-        if dedupe:
-            governor.record(action, target)
-        else:
-            governor.record_paced(action)
     return proof
 
 
