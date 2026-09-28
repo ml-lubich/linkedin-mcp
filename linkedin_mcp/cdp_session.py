@@ -24,8 +24,8 @@ class CdpSession:
     """A single WebSocket connection to one Chrome tab, for a short sequence
     of CDP commands that must share objectIds/domain state."""
 
-    def __init__(self, port: int, url_contains: str = ""):
-        page = pick_page(port, url_contains)
+    def __init__(self, port: int, url_contains: str = "", host: str = ""):
+        page = pick_page(port, url_contains, host)
         ws_url = page.get("webSocketDebuggerUrl")
         if not ws_url:
             raise ChromeError("Tab has no CDP websocket")
@@ -134,10 +134,10 @@ class CdpSession:
         self.close()
 
 
-def set_file_input(port: int, selector: str, file_path: str, url_contains: str = "") -> bool:
+def set_file_input(port: int, selector: str, file_path: str, url_contains: str = "", host: str = "") -> bool:
     """Set a hidden <input type="file"> to file_path via CDP, no clicking the
     real file picker. Returns True if the element was found and set."""
-    with CdpSession(port, url_contains) as session:
+    with CdpSession(port, url_contains, host) as session:
         result = session.call(
             "Runtime.evaluate",
             {"expression": f"document.querySelector({json.dumps(selector)})", "returnByValue": False},

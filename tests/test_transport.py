@@ -158,3 +158,36 @@ def test_fetch_profile_parses_embedded_profile_payload(monkeypatch) -> None:
     assert payload["geoLocationName"] == "Buenos Aires"
     assert payload["publicProfileUrl"] == "https://www.linkedin.com/in/jane-doe/"
     assert payload["displayPictureUrl"] == "https://media.licdn.com/dms/image/v2/large.jpg"
+
+
+def test_probe_never_leaks_the_raw_set_cookie_header(monkeypatch) -> None:
+    """Security fix (review A5): a redirect's raw Set-Cookie header must
+    never appear in the diagnostic dict `probe()` returns -- it flows
+    straight into `linkedin auth-status` / the auth_status MCP tool."""
+    from linkedin_mcp.transport import LinkedInRedirectError, RedirectDetails
+
+    config = load_config()
+    jar = RequestsCookieJar()
+    jar.set("JSESSIONID", '"ajax:123"', domain=".linkedin.com", path="/")
+    session = AuthSession(cookie_jar=jar, source="env")
+    transport = LinkedInVoyagerTransport(session, config)
+    secret_cookie = "li_at=super-secret-session-token; Domain=.linkedin.com; Path=/"
+
+    def fake_request(resource, *, params=None, headers=None, allow_redirects=False):
+        raise LinkedInRedirectError(
+            "redirected",
+            RedirectDetails(
+                status_code=302,
+                url="https://www.linkedin.com/voyager/api/me",
+                location="https://www.linkedin.com/uas/login",
+                reason="self-redirect-loop",
+                set_cookie=secret_cookie,
+            ),
+        )
+
+    monkeypatch.setattr(transport, "_request", fake_request)
+
+    result = transport.probe("/me")
+
+    assert "set_cookie" not in result
+    assert secret_cookie not in str(result)

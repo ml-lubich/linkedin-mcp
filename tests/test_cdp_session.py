@@ -118,7 +118,7 @@ def test_connect_closes_on_empty_read(monkeypatch):
 
 def test_init_uses_pick_page_and_connects(monkeypatch):
     monkeypatch.setattr(
-        cdp_session_mod, "pick_page", lambda port, url_contains: {"webSocketDebuggerUrl": "ws://x/y"}
+        cdp_session_mod, "pick_page", lambda port, url_contains="", host="": {"webSocketDebuggerUrl": "ws://x/y"}
     )
     fake = FakeSocket()
     monkeypatch.setattr(CdpSession, "_connect", staticmethod(lambda ws_url: fake))
@@ -128,7 +128,7 @@ def test_init_uses_pick_page_and_connects(monkeypatch):
 
 
 def test_init_raises_without_websocket_url(monkeypatch):
-    monkeypatch.setattr(cdp_session_mod, "pick_page", lambda port, url_contains: {})
+    monkeypatch.setattr(cdp_session_mod, "pick_page", lambda port, url_contains="", host="": {})
     with pytest.raises(ChromeError, match="no CDP websocket"):
         CdpSession(9222, "linkedin.com")
 
@@ -241,7 +241,7 @@ def test_context_manager_closes_on_exit():
 
 def test_set_file_input_success(monkeypatch):
     monkeypatch.setattr(
-        cdp_session_mod, "pick_page", lambda port, url_contains: {"webSocketDebuggerUrl": "ws://x/y"}
+        cdp_session_mod, "pick_page", lambda port, url_contains="", host="": {"webSocketDebuggerUrl": "ws://x/y"}
     )
     frames = _result_frame(1, {"result": {"objectId": "obj-1"}}) + _result_frame(2, {})
     fake = FakeSocket(frames)
@@ -252,7 +252,7 @@ def test_set_file_input_success(monkeypatch):
 
 def test_set_file_input_missing_element_returns_false(monkeypatch):
     monkeypatch.setattr(
-        cdp_session_mod, "pick_page", lambda port, url_contains: {"webSocketDebuggerUrl": "ws://x/y"}
+        cdp_session_mod, "pick_page", lambda port, url_contains="", host="": {"webSocketDebuggerUrl": "ws://x/y"}
     )
     frames = _result_frame(1, {"result": {}})  # no objectId: querySelector found nothing
     fake = FakeSocket(frames)
@@ -263,7 +263,7 @@ def test_set_file_input_missing_element_returns_false(monkeypatch):
 
 def test_set_file_input_closes_session_even_on_error(monkeypatch):
     monkeypatch.setattr(
-        cdp_session_mod, "pick_page", lambda port, url_contains: {"webSocketDebuggerUrl": "ws://x/y"}
+        cdp_session_mod, "pick_page", lambda port, url_contains="", host="": {"webSocketDebuggerUrl": "ws://x/y"}
     )
     fake = FakeSocket(_error_frame(1, "no such frame"))
     monkeypatch.setattr(CdpSession, "_connect", staticmethod(lambda ws_url: fake))

@@ -91,7 +91,7 @@ def test_send_referral_rate_limited_by_real_governor_on_repeat_url(config, monke
     monkeypatch.setattr(referral_mod, "read_thread", lambda *a, **k: {"bodies": ["hiring"], "speakers": []})
     monkeypatch.setattr(messaging_mod.time, "sleep", lambda s: None)
 
-    def fake_evaluate(port, script, tab):
+    def fake_evaluate(port, script, **kw):
         if "insertText" in script:
             return True
         if "getAttribute('disabled')" in script:

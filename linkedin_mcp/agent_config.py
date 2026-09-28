@@ -58,6 +58,10 @@ class Config:
     never_contact: list[str] = field(default_factory=list)
     share_contact: str = "decline"
     governor_db_path: str = ""
+    # Directory a message/referral attachment must resolve inside (see
+    # messaging._validate_attachment_path). Empty means: fall back to
+    # referral.resume_path's directory, else ~/Documents.
+    attachments_dir: str = ""
 
 
 def _load_toml(path: Path) -> dict:
@@ -102,6 +106,7 @@ def load_config(path: Path | None = None, env: dict | None = None) -> Config:
         never_contact=list(exclusions.get("never_contact") or []),
         share_contact=str(popups.get("share_contact") or "decline"),
         governor_db_path=str(governor_raw.get("db_path") or ""),
+        attachments_dir=str(raw.get("attachments_dir") or ""),
     )
 
     if env.get("LINKEDIN_AGENT_GOVERNOR_DB"):
@@ -123,5 +128,7 @@ def load_config(path: Path | None = None, env: dict | None = None) -> Config:
         cfg.reserved_for_self = _split_csv(env["LINKEDIN_AGENT_RESERVED_COMPANIES"])
     if env.get("LINKEDIN_AGENT_NEVER_CONTACT"):
         cfg.never_contact = _split_csv(env["LINKEDIN_AGENT_NEVER_CONTACT"])
+    if env.get("LINKEDIN_AGENT_ATTACHMENTS_DIR"):
+        cfg.attachments_dir = env["LINKEDIN_AGENT_ATTACHMENTS_DIR"]
 
     return cfg

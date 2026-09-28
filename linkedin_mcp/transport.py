@@ -84,7 +84,9 @@ class LinkedInTransport:
                 "url": exc.details.url,
                 "location": exc.details.location,
                 "reason": exc.details.reason,
-                "set_cookie": exc.details.set_cookie,
+                # Never the raw Set-Cookie value -- these diagnostics flow into
+                # `linkedin auth-status` / the auth_status MCP tool.
+                "set_cookie_present": exc.details.set_cookie is not None,
             }
         except Exception as exc:  # pragma: no cover - network-dependent
             return {"ok": False, "error": str(exc)}
@@ -114,7 +116,9 @@ class LinkedInTransport:
                 "url": exc.details.url,
                 "location": exc.details.location,
                 "reason": exc.details.reason,
-                "set_cookie": exc.details.set_cookie,
+                # Never the raw Set-Cookie value -- these diagnostics flow into
+                # `linkedin auth-status` / the auth_status MCP tool.
+                "set_cookie_present": exc.details.set_cookie is not None,
             }
         except Exception as exc:  # pragma: no cover - network-dependent
             return {"ok": False, "error": str(exc)}

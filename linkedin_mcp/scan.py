@@ -38,7 +38,7 @@ class Candidate:
 
 def _load_full_thread_list(port: int, rounds: int, sleep_seconds: float) -> None:
     for _ in range(rounds):
-        evaluate(port, _SCROLL_JS, url_contains=TAB)
+        evaluate(port, _SCROLL_JS, host=TAB)
         if sleep_seconds:
             time.sleep(sleep_seconds)
 

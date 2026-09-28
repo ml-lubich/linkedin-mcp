@@ -7,9 +7,10 @@ import linkedin_mcp.messaging as messaging
 
 def test_open_thread_navigates(config, monkeypatch):
     calls = []
-    monkeypatch.setattr(messaging, "navigate", lambda port, url, tab: calls.append((port, url, tab)))
-    messaging.open_thread("https://example.com/thread", config.cdp_port)
-    assert calls == [(config.cdp_port, "https://example.com/thread", messaging.TAB)]
+    monkeypatch.setattr(messaging, "navigate", lambda port, url, **kw: calls.append((port, url, kw.get("host"))))
+    url = "https://www.linkedin.com/messaging/thread/abc/"
+    messaging.open_thread(url, config.cdp_port)
+    assert calls == [(config.cdp_port, url, messaging.TAB)]
 
 
 def test_read_thread_slices_bodies(config, monkeypatch):
@@ -46,7 +47,7 @@ def test_send_message_raises_when_compose_missing(config, monkeypatch):
 def test_send_message_full_success(config, monkeypatch):
     state = {"sent_clicked": False}
 
-    def fake_evaluate(port, script, tab):
+    def fake_evaluate(port, script, **kw):
         if "insertText" in script:
             return True
         if "getAttribute('disabled')" in script:
@@ -66,7 +67,7 @@ def test_send_message_full_success(config, monkeypatch):
         "hello",
         config,
         confirm=True,
-        attachment_path="/tmp/x.pdf",
+        attachment_path=config.referral.resume_path,
         attachment_name_hint=config.referral.attachment_name,
         verify_attempts=1,
         verify_wait_seconds=0,
@@ -81,11 +82,11 @@ def test_send_message_attachment_not_found_raises(config, monkeypatch):
     monkeypatch.setattr(messaging, "evaluate", lambda *a, **k: True)
     monkeypatch.setattr(messaging, "set_file_input", lambda *a, **k: False)
     with pytest.raises(messaging.ChromeError, match="no file input"):
-        messaging.send_message("hello", config, confirm=True, attachment_path="/tmp/x.pdf")
+        messaging.send_message("hello", config, confirm=True, attachment_path=config.referral.resume_path)
 
 
 def test_send_message_disabled_button_raises(config, monkeypatch):
-    def fake_evaluate(port, script, tab):
+    def fake_evaluate(port, script, **kw):
         if "insertText" in script:
             return True
         if "getAttribute('disabled')" in script:
@@ -100,7 +101,7 @@ def test_send_message_disabled_button_raises(config, monkeypatch):
 def test_send_message_with_governor_checks_before_sending(config, monkeypatch, tmp_path):
     from linkedin_mcp.governor import Governor, RateLimited
 
-    def fake_evaluate(port, script, tab):
+    def fake_evaluate(port, script, **kw):
         if "insertText" in script:
             return True
         if "getAttribute('disabled')" in script:
@@ -131,7 +132,7 @@ def test_send_message_with_governor_checks_before_sending(config, monkeypatch, t
 def test_send_message_governor_not_recorded_when_send_fails_verification(config, monkeypatch, tmp_path):
     from linkedin_mcp.governor import Governor
 
-    def fake_evaluate(port, script, tab):
+    def fake_evaluate(port, script, **kw):
         if "insertText" in script:
             return True
         if "getAttribute('disabled')" in script:
@@ -158,7 +159,7 @@ def test_send_message_without_target_skips_governor_entirely(config, monkeypatch
     check is skipped rather than crashing on an empty key."""
     from linkedin_mcp.governor import Governor
 
-    def fake_evaluate(port, script, tab):
+    def fake_evaluate(port, script, **kw):
         if "insertText" in script:
             return True
         if "getAttribute('disabled')" in script:
@@ -178,7 +179,7 @@ def test_send_message_without_target_skips_governor_entirely(config, monkeypatch
 
 
 def test_send_message_incomplete_delivery_reports_not_sent(config, monkeypatch):
-    def fake_evaluate(port, script, tab):
+    def fake_evaluate(port, script, **kw):
         if "insertText" in script:
             return True
         if "getAttribute('disabled')" in script:

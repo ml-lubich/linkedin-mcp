@@ -50,7 +50,7 @@ def test_publish_post_editor_missing_raises(config, monkeypatch):
     monkeypatch.setattr(post_mod, "navigate", lambda *a, **k: None)
     calls = {"n": 0}
 
-    def fake_evaluate(port, script, tab):
+    def fake_evaluate(port, script, **kw):
         calls["n"] += 1
         if calls["n"] == 1:  # start-post click
             return True

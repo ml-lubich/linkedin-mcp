@@ -27,7 +27,15 @@ def _block_real_sockets(monkeypatch):
 
 @pytest.fixture
 def config(tmp_path) -> Config:
-    """Agent-side (CDP) config fixture, shared by the ported linkedin-agent tests."""
+    """Agent-side (CDP) config fixture, shared by the ported linkedin-agent tests.
+
+    resume_path points at a real file (send_message's attachment validation
+    requires the path to actually resolve, see messaging._validate_attachment_path),
+    and attachments_dir is left "" so the resume's own directory is the
+    fallback allowlist -- matching how a real config.toml would be set up.
+    """
+    resume_path = tmp_path / "referee_resume.pdf"
+    resume_path.write_bytes(b"%PDF-1.4 fake resume for tests\n")
     return Config(
         cdp_port=9222,
         self_name="Agent Self",
@@ -37,7 +45,7 @@ def config(tmp_path) -> Config:
             name="Referee Person",
             email="referee@example.com",
             linkedin_url="https://www.linkedin.com/in/referee-example/",
-            resume_path="/tmp/referee_resume.pdf",
+            resume_path=str(resume_path),
             attachment_name="resume.pdf",
             pitch=[
                 PitchRule(keywords=["data", "analytics"], text="built data platforms that shipped"),

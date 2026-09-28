@@ -45,11 +45,11 @@ def lint_post(text: str) -> list[str]:
 
 
 def open_composer(port: int) -> None:
-    navigate(port, FEED_URL, TAB)
+    navigate(port, FEED_URL, host=TAB)
     script = (
         f"(() => {{const b = document.querySelector({json.dumps(START_POST_SELECTOR)}); if (b) b.click(); return !!b;}})()"
     )
-    ok = evaluate(port, script, TAB)
+    ok = evaluate(port, script, host=TAB)
     if not ok:
         raise ChromeError("could not find the 'Start a post' button")
 
@@ -76,16 +76,16 @@ def publish_post(
         + json.dumps(text)
         + ")"
     )
-    if not evaluate(cdp_port, fill_script, TAB):
+    if not evaluate(cdp_port, fill_script, host=TAB):
         raise ChromeError("post editor not found")
-
-    attached = False
-    if image_path:
-        attached = set_file_input(cdp_port, IMAGE_INPUT_SELECTOR, image_path, TAB)
-        time.sleep(1.0)
 
     if not confirm:
         raise SendNotConfirmedError("publish_post requires confirm=True; nothing was posted")
+
+    attached = False
+    if image_path:
+        attached = set_file_input(cdp_port, IMAGE_INPUT_SELECTOR, image_path, host=TAB)
+        time.sleep(1.0)
 
     target = hashlib.sha256(text.encode()).hexdigest()[:16]
     owns_governor = governor is None
@@ -95,7 +95,7 @@ def publish_post(
         click_script = (
             f"(() => {{const b = document.querySelector({json.dumps(POST_BUTTON_SELECTOR)}); if (b) b.click(); return !!b;}})()"
         )
-        clicked = evaluate(cdp_port, click_script, TAB)
+        clicked = evaluate(cdp_port, click_script, host=TAB)
         if clicked:
             gov.record("post", target)
     finally:

@@ -31,7 +31,7 @@ from own_chrome.cdp import ChromeError, evaluate, navigate, open_tab, pages
 from linkedin_mcp.agent_config import Config
 from linkedin_mcp.cdp_session import set_file_input
 from linkedin_mcp.governor import Governor
-from linkedin_mcp.messages_actions import act_expression, choose_linkedin_tab, choose_popup_action, thread_query_expression
+from linkedin_mcp.messages_actions import act_expression, choose_linkedin_tab, choose_popup_action, thread_query_expression, validate_linkedin_url
 
 TAB = "linkedin.com"
 MESSAGING = "https://www.linkedin.com/messaging/"
@@ -45,11 +45,52 @@ KEYCHAIN_ACCOUNT = "li"
 
 
 class SendNotConfirmedError(RuntimeError):
-    """Raised when a send/publish call is made without confirm=True."""
+    """Raised when a send/publish call is made without confirm=True.
+
+    `preview` describes what would have happened had confirm been True --
+    in particular the resolved attachment path, if any -- without ever
+    touching the DOM file input or the browser's Send button.
+    """
+
+    def __init__(self, message: str, preview: dict | None = None) -> None:
+        super().__init__(message)
+        self.preview = preview or {}
+
+
+def _allowed_attachment_dir(config: Config) -> Path:
+    if config.attachments_dir:
+        return Path(config.attachments_dir).expanduser().resolve()
+    if config.referral.resume_path:
+        return Path(config.referral.resume_path).expanduser().resolve().parent
+    return (Path.home() / "Documents").resolve()
+
+
+def _validate_attachment_path(raw_path: str, config: Config) -> Path:
+    """Resolve `raw_path` (following symlinks) and require the real file to
+    live inside the configured attachments directory. Rejects anything
+    missing, not a regular file, or that resolves outside the allowlist --
+    including a symlink whose target escapes it."""
+    allowed_dir = _allowed_attachment_dir(config)
+    candidate = Path(raw_path).expanduser()
+    try:
+        resolved = candidate.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise ValueError(f"attachment not found: {raw_path}") from exc
+    if not resolved.is_file():
+        raise ValueError(f"attachment is not a regular file: {raw_path}")
+    if resolved != allowed_dir and allowed_dir not in resolved.parents:
+        raise ValueError(
+            f"attachment {resolved} is outside the allowed attachments directory {allowed_dir}; "
+            "set attachments_dir in config.toml to allow it"
+        )
+    return resolved
 
 
 def open_thread(url: str, port: int) -> None:
-    navigate(port, url, TAB)
+    """Navigate to `url`. Rejects anything that is not an https URL on
+    linkedin.com (or a subdomain) before ever calling navigate()."""
+    validate_linkedin_url(url)
+    navigate(port, url, host=TAB)
 
 
 def read_thread(port: int, limit: int = 40) -> dict:
@@ -80,7 +121,7 @@ def _fill_compose(port: int, text: str) -> None:
         "return true;"
         "})(" + json.dumps(text) + ")"
     )
-    ok = evaluate(port, script, TAB)
+    ok = evaluate(port, script, host=TAB)
     if not ok:
         raise ChromeError("compose box not found")
 
@@ -90,14 +131,14 @@ def _send_button_enabled(port: int) -> bool:
         f"(() => {{const b = document.querySelector({json.dumps(SEND_BUTTON_SELECTOR)});"
         "return !!b && b.getAttribute('disabled') === null;})()"
     )
-    return bool(evaluate(port, script, TAB))
+    return bool(evaluate(port, script, host=TAB))
 
 
 def _click_send(port: int) -> None:
     script = (
         f"(() => {{const b = document.querySelector({json.dumps(SEND_BUTTON_SELECTOR)}); if (b) b.click(); return !!b;}})()"
     )
-    evaluate(port, script, TAB)
+    evaluate(port, script, host=TAB)
 
 
 def _last_message_text(port: int) -> str:
@@ -105,14 +146,14 @@ def _last_message_text(port: int) -> str:
         "(() => {const items = document.querySelectorAll('.msg-s-event-listitem');"
         "const last = items[items.length - 1]; return last ? last.innerText : '';})()"
     )
-    return evaluate(port, script, TAB) or ""
+    return evaluate(port, script, host=TAB) or ""
 
 
 def _compose_is_empty(port: int) -> bool:
     script = (
         f"(() => {{const b = document.querySelector({json.dumps(COMPOSE_SELECTOR)}); return !b || b.innerText.trim().length < 5;}})()"
     )
-    return bool(evaluate(port, script, TAB))
+    return bool(evaluate(port, script, host=TAB))
 
 
 def send_message(
@@ -141,17 +182,33 @@ def send_message(
     send_referral_for_candidate, publish_post -- always pass one).
     """
     cdp_port = port if port is not None else config.cdp_port
+
+    validated_attachment: Path | None = None
+    if attachment_path:
+        # Validated before we touch the DOM at all, confirmed or not: a bad
+        # path (missing, not a file, outside the allowlist) is a hard error
+        # either way, never a silent no-op.
+        validated_attachment = _validate_attachment_path(attachment_path, config)
+
     _fill_compose(cdp_port, text)
 
+    if not confirm:
+        raise SendNotConfirmedError(
+            "send_message requires confirm=True; nothing was sent"
+            + (f" (would attach: {validated_attachment})" if validated_attachment else ""),
+            preview={
+                "would_attach": str(validated_attachment) if validated_attachment else None,
+                "compose_filled": True,
+                "sent": False,
+            },
+        )
+
     attached = False
-    if attachment_path:
-        attached = set_file_input(cdp_port, FILE_INPUT_SELECTOR, attachment_path, TAB)
+    if validated_attachment is not None:
+        attached = set_file_input(cdp_port, FILE_INPUT_SELECTOR, str(validated_attachment), host=TAB)
         if not attached:
             raise ChromeError("no file input found; not sending")
         time.sleep(attach_wait_seconds)
-
-    if not confirm:
-        raise SendNotConfirmedError("send_message requires confirm=True; nothing was sent")
 
     if governor is not None and target:
         governor.check(action, target)

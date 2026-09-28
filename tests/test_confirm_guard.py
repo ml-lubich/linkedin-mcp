@@ -39,7 +39,7 @@ def test_send_message_refuses_every_falsy_confirm_value(config, monkeypatch, fal
 def test_send_message_never_calls_click_script_without_confirm(config, monkeypatch):
     calls = []
 
-    def fake_evaluate(port, script, tab):
+    def fake_evaluate(port, script, **kw):
         calls.append(script)
         return True
 
@@ -51,11 +51,12 @@ def test_send_message_never_calls_click_script_without_confirm(config, monkeypat
 
 def test_send_message_attachment_alone_does_not_send(config, monkeypatch):
     """Attaching a file without --confirm is "drafting with an attachment",
-    not sending -- the send button must still never be clicked."""
+    not sending -- the send button must still never be clicked, and (see
+    test_send_message_security.py) the attachment is never even staged."""
     monkeypatch.setattr(messaging_mod, "evaluate", lambda *a, **k: True)
     monkeypatch.setattr(messaging_mod, "set_file_input", lambda *a, **k: True)
     with pytest.raises(SendNotConfirmedError):
-        send_message("hello", config, confirm=False, attachment_path="/tmp/x.pdf")
+        send_message("hello", config, confirm=False, attachment_path=config.referral.resume_path)
 
 
 def test_publish_post_refuses_without_confirm(config, monkeypatch):
@@ -68,7 +69,7 @@ def test_publish_post_refuses_without_confirm(config, monkeypatch):
 def test_publish_post_never_calls_post_click_script_without_confirm(config, monkeypatch):
     calls = []
 
-    def fake_evaluate(port, script, tab):
+    def fake_evaluate(port, script, **kw):
         calls.append(script)
         return True
 

@@ -94,9 +94,9 @@ def test_fetch_cookies_uses_cdp_session(monkeypatch):
     calls = {}
 
     class FakeSession:
-        def __init__(self, port, tab):
+        def __init__(self, port, url_contains="", host=""):
             calls["port"] = port
-            calls["tab"] = tab
+            calls["host"] = host
 
         def call(self, method, params):
             calls["method"] = method
@@ -117,7 +117,7 @@ def test_fetch_cookies_uses_cdp_session(monkeypatch):
 
     assert cookies == [{"name": "li_at", "value": "x"}]
     assert calls["method"] == "Network.getCookies"
-    assert calls["tab"] == auth_capture.TAB
+    assert calls["host"] == auth_capture.TAB
 
 
 def test_env_line_reads_saved_cookie_and_formats_export(monkeypatch, tmp_path):
@@ -127,7 +127,7 @@ def test_env_line_reads_saved_cookie_and_formats_export(monkeypatch, tmp_path):
 
     line = auth_capture.env_line()
 
-    assert line == 'export LINKEDIN_COOKIE_HEADER="li_at=abc; JSESSIONID=xyz"'
+    assert line == "export LINKEDIN_COOKIE_HEADER='li_at=abc; JSESSIONID=xyz'"
 
 
 def test_env_line_without_a_saved_session_raises(monkeypatch, tmp_path):

@@ -42,6 +42,19 @@ def _linkedin_host(url: str) -> bool:
     return host == "linkedin.com" or host.endswith(".linkedin.com")
 
 
+def validate_linkedin_url(url: str) -> str:
+    """Require an https URL on linkedin.com or a subdomain of it. Raises
+    ValueError otherwise -- blocks javascript:/file: schemes, plain http,
+    and lookalike hosts (evil.tld/linkedin.com/x, linkedin.com.evil.tld)."""
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except ValueError as exc:
+        raise ValueError(f"not a valid URL: {url!r}") from exc
+    if parsed.scheme != "https" or not _linkedin_host(url):
+        raise ValueError(f"refusing to navigate to a non-linkedin.com URL: {url!r}")
+    return url
+
+
 def on_messaging(url: str) -> bool:
     try:
         parsed = urllib.parse.urlparse(url)

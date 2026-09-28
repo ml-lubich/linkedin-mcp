@@ -34,7 +34,11 @@ def test_read_tool_round_trips_a_dataclass_to_a_dict(monkeypatch) -> None:
     )
     result = _run(mcp.call_tool("feed", {}))
     assert result.is_error is False
-    posts = result.structured_content["result"]
+    import json as _json
+
+    payload = _json.loads(result.content[0].text)
+    assert payload["untrusted"] is True
+    posts = payload["result"]
     assert posts[0]["text"] == "hi"
     assert posts[0]["author"]["name"] == "Jane"
 
@@ -160,7 +164,9 @@ def test_scan_tool_converts_dataclasses(monkeypatch) -> None:
     result = _run(mcp.call_tool("scan", {}))
     assert result.is_error is False
     import json as _json
-    assert _json.loads(result.content[0].text)["Jordan"]["unread"] is True
+    payload = _json.loads(result.content[0].text)
+    assert payload["untrusted"] is True
+    assert payload["result"]["Jordan"]["unread"] is True
 
 
 def test_messages_workflow_tool_never_sends(monkeypatch, tmp_path) -> None:
@@ -170,7 +176,9 @@ def test_messages_workflow_tool_never_sends(monkeypatch, tmp_path) -> None:
     result = _run(mcp.call_tool("messages_workflow", {"spec_path": str(spec)}))
     assert result.is_error is False
     import json as _json
-    assert _json.loads(result.content[0].text)["sent"] is False
+    payload = _json.loads(result.content[0].text)
+    assert payload["untrusted"] is True
+    assert payload["result"]["sent"] is False
 
 
 def test_main_runs_the_stdio_server(monkeypatch) -> None:
