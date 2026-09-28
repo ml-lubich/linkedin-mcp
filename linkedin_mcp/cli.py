@@ -387,16 +387,11 @@ def scan(
     as_json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
 ) -> None:
     """Find threads that still need a reply/referral."""
-    import dataclasses
-
     candidates = core.scan(config_path=_config_path(ctx))
-    as_dicts = {
-        name: (dataclasses.asdict(c) if dataclasses.is_dataclass(c) else c) for name, c in candidates.items()
-    }
     if as_json:
-        typer.echo(to_json(as_dicts))
+        typer.echo(to_json(candidates))
         return
-    for name, candidate in as_dicts.items():
+    for name, candidate in candidates.items():
         status = "unread" if candidate.get("unread") else "read"
         console.print(f"{name}\t{status}\t{candidate.get('url', '')}")
 

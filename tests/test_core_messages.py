@@ -219,3 +219,21 @@ def test_scan_passes_config_path_and_port_through(monkeypatch) -> None:
     core.scan(port=9999, config_path="scan.yaml")
     assert load_calls["path"] == Path("scan.yaml")
     assert scan_calls == {"cfg": "cfg-from-path", "port": 9999}
+
+
+def test_scan_returns_plain_dicts_not_dataclass_instances(monkeypatch) -> None:
+    """Cleanup (review C1): core.scan's -> dict annotation was a lie -- it
+    returned dict[str, Candidate] (dataclass values), and cli.py/mcp_server.py
+    each duplicated their own dataclasses.asdict() conversion. Converting
+    once here means both surfaces can just emit the result."""
+    from linkedin_mcp.scan import Candidate
+
+    monkeypatch.setattr(core, "load_agent_config", lambda path=None: "cfg")
+    monkeypatch.setattr(
+        core.scan_mod,
+        "find_referral_candidates",
+        lambda cfg, port=None: {"Jordan": Candidate(name="Jordan", url="u", unread=True, text="hi")},
+    )
+    result = core.scan()
+    assert result == {"Jordan": {"name": "Jordan", "url": "u", "unread": True, "text": "hi"}}
+    assert isinstance(result["Jordan"], dict)

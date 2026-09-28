@@ -182,40 +182,18 @@ _THREAD_QUERY_JS = r"""
 }
 """
 
-READY_JS = r"""async () => {
-  const deadline = Date.now() + 1000;
-  while (Date.now() < deadline) {
-    const onMsg = location.pathname.indexOf("/messaging") === 0;
-    const list = document.querySelector(
-      ".msg-conversation-listitem, .msg-conversation-card, .msg-conversations-container"
-    );
-    if (onMsg && list) return {ready: true, url: location.href, title: document.title};
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  return {ready: false, url: location.href, title: document.title};
-}"""
-
 # Click happens only after the single-match check. Several matches return first.
+# Only op="select" is ever passed in (see messaging.select_thread) -- typing
+# and sending are messaging.py's own _fill_compose/_click_send, not this.
 ACT_JS = r"""async (opts) => {
   const op = opts.op;
   const q = String(opts.name || "").trim().toLowerCase();
-  const text = String(opts.text || "");
   const nameOf = (el) => {
     const node = el.querySelector(
       ".msg-conversation-listitem__participant-names, .msg-conversation-card__participant-names"
     );
     return ((node && node.innerText) || "").trim();
   };
-  const clickSend = () => {
-    const btn = document.querySelector("button.msg-form__send-button");
-    if (!btn || btn.disabled || btn.getAttribute("aria-disabled") === "true") return false;
-    btn.click();
-    return true;
-  };
-  if (op === "send") {
-    const sent = clickSend();
-    return {action: "send", ok: sent, sent: sent, matched: "", chars: 0, ambiguous: false, matches: []};
-  }
   const wantHref = String(opts.href || "");
   const seen = new Set();
   const matches = [];
@@ -259,58 +237,16 @@ ACT_JS = r"""async (opts) => {
     if (box) break;
     await new Promise((r) => setTimeout(r, 200));
   }
-  if (op === "select") {
-    return {
-      action: "select",
-      ok: !!box,
-      sent: false,
-      matched: matches[0].name,
-      chars: 0,
-      ambiguous: false,
-      matches: [matches[0].name]
-    };
-  }
-  if (!box) {
-    return {
-      action: "tell",
-      ok: false,
-      sent: false,
-      matched: matches[0].name,
-      chars: 0,
-      ambiguous: false,
-      matches: [matches[0].name],
-      reason: "composer not ready"
-    };
-  }
-  box.focus();
-  document.execCommand("insertText", false, text);
-  if (!opts.send) {
-    return {
-      action: "tell",
-      ok: true,
-      sent: false,
-      matched: matches[0].name,
-      chars: text.length,
-      ambiguous: false,
-      matches: [matches[0].name]
-    };
-  }
-  const sent = clickSend();
   return {
-    action: "tell",
-    ok: sent,
-    sent: sent,
+    action: "select",
+    ok: !!box,
+    sent: false,
     matched: matches[0].name,
-    chars: text.length,
+    chars: 0,
     ambiguous: false,
-    matches: [matches[0].name],
-    reason: sent ? "" : "send button unavailable"
+    matches: [matches[0].name]
   };
 }"""
-
-
-def ready_expression() -> str:
-    return f"({READY_JS})()"
 
 
 def act_expression(op: str, name: str, text: str, send: bool, href: str = "") -> str:
@@ -386,7 +322,10 @@ def route(
     return {"go": True, "route": "write", "reason": reason, "draft": draft}
 
 
-def run_workflow(spec: dict, thread_text: str, complete: Complete, dry_run: bool = True) -> dict:
+def run_workflow(spec: dict, thread_text: str, complete: Complete) -> dict:
+    """Classify + draft only -- there is no live-send mode; `sent` is
+    always False. (A `dry_run` flag used to exist here and do nothing --
+    removed rather than kept as a misleading no-op.)"""
     decision = route(
         thread_text,
         pattern=spec.get("match") or "",
@@ -397,5 +336,5 @@ def run_workflow(spec: dict, thread_text: str, complete: Complete, dry_run: bool
         complete=complete,
     )
     decision["name"] = spec.get("name") or ""
-    decision["sent"] = False  # this workflow never sends, dry_run or not
+    decision["sent"] = False
     return decision

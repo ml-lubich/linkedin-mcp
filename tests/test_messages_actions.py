@@ -17,7 +17,6 @@ from linkedin_mcp.messages_actions import (
     choose_linkedin_tab,
     choose_popup_action,
     on_messaging,
-    ready_expression,
     route,
     run_workflow,
     thread_query_expression,
@@ -29,12 +28,6 @@ def test_on_messaging_accepts_inbox_and_thread_urls():
     assert on_messaging("https://www.linkedin.com/messaging/thread/abc")
     assert not on_messaging("https://www.linkedin.com/feed/")
     assert not on_messaging("https://www.google.com/search?q=linkedin.com/messaging")
-
-
-def test_ready_expression_is_an_async_iife():
-    expr = ready_expression()
-    assert expr.startswith("(async")
-    assert "/messaging" in expr
 
 
 def test_act_expression_embeds_escaped_payload():
@@ -382,12 +375,14 @@ def test_run_workflow_regex_miss_from_spec_match_short_circuits():
     assert calls == []
 
 
-def test_run_workflow_sent_is_always_false_regardless_of_dry_run_flag():
+def test_run_workflow_sent_is_always_false():
+    # Updated for review C1: the `dry_run` flag was accepted and ignored
+    # (sent was always False either way) -- removed as dead code rather than
+    # kept as a misleading no-op parameter. There is no live-send mode.
     def complete(model, messages):
         return json.dumps({"go": False, "reason": "n/a"})
 
-    assert run_workflow({}, "hi", complete, dry_run=True)["sent"] is False
-    assert run_workflow({}, "hi", complete, dry_run=False)["sent"] is False
+    assert run_workflow({}, "hi", complete)["sent"] is False
 
 
 # ---- _linkedin_host / on_messaging: host matching edge cases --------------

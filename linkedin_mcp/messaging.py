@@ -451,4 +451,4 @@ def workflow_run(spec_path: str, text: str = "", port: int | None = None) -> dic
     if not text and port is not None:
         raw = read_thread(port, limit=4)
         text = "\n\n".join(raw.get("bodies") or [])
-    return run_workflow(spec, text, complete, dry_run=True)
+    return run_workflow(spec, text, complete)

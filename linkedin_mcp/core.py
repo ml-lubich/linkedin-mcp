@@ -254,9 +254,14 @@ def messages_commands() -> dict:
 
 
 def scan(port: Optional[int] = None, config_path: Optional[str] = None) -> dict:
-    """Find threads that still need a reply/referral."""
+    """Find threads that still need a reply/referral. Converts each
+    Candidate to a plain dict here, once, so the CLI and the MCP tool can
+    just emit the result instead of each doing their own asdict()."""
+    import dataclasses
+
     config = _agent_config(config_path)
-    return scan_mod.find_referral_candidates(config, port=port)
+    candidates = scan_mod.find_referral_candidates(config, port=port)
+    return {name: (dataclasses.asdict(c) if dataclasses.is_dataclass(c) else c) for name, c in candidates.items()}
 
 
 def referral_draft(

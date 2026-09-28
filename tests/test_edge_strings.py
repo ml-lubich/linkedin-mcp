@@ -76,10 +76,13 @@ def test_lint_post_never_crashes(text):
 
 @pytest.mark.parametrize("text", EDGE_STRINGS)
 def test_late_apology_handles_string_input_gracefully(text):
-    # late_apology expects an int-like; feeding it text should not explode
-    # silently produce nonsense -- it should raise a clear TypeError/ValueError
-    # or coerce, never hang or segfault. We only assert it terminates.
-    try:
-        copywriter.late_apology(text)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        pass
+    # late_apology expects an int-like. None of EDGE_STRINGS is a numeric
+    # literal, so the real, deterministic contract is: `"" or 0` short-
+    # circuits falsy input to 0 (empty apology), and every other non-numeric
+    # string reaches int(str) and raises ValueError -- never TypeError,
+    # never silently swallowed.
+    if not text:
+        assert copywriter.late_apology(text) == ""
+    else:
+        with pytest.raises(ValueError):
+            copywriter.late_apology(text)
