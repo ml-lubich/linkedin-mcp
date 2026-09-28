@@ -171,3 +171,12 @@ def test_messages_workflow_tool_never_sends(monkeypatch, tmp_path) -> None:
     assert result.is_error is False
     import json as _json
     assert _json.loads(result.content[0].text)["sent"] is False
+
+
+def test_main_runs_the_stdio_server(monkeypatch) -> None:
+    from linkedin_mcp import mcp_server
+
+    captured = {}
+    monkeypatch.setattr(mcp_server.mcp, "run", lambda **kwargs: captured.update(kwargs))
+    mcp_server.main()
+    assert captured == {"transport": "stdio"}

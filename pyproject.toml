@@ -75,3 +75,21 @@ source = ["linkedin_mcp"]
 
 [tool.ruff]
 line-length = 100
+
+[tool.mutmut]
+source_paths = ["linkedin_mcp"]
+only_mutate = [
+    "linkedin_mcp/guard.py",
+    "linkedin_mcp/core.py",
+    "linkedin_mcp/mcp_server.py",
+    "linkedin_mcp/auth_capture.py",
+    "linkedin_mcp/scan.py",
+    "linkedin_mcp/messaging.py",
+    "linkedin_mcp/messages_actions.py",
+    "linkedin_mcp/cli.py",
+]
+
+[dependency-groups]
+dev = [
+    "mutmut>=3.8.0",
+]

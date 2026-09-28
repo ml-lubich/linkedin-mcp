@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import pytest
 from typer.testing import CliRunner
 
 import linkedin_mcp.core as core
@@ -400,3 +401,66 @@ def test_auth_env_command_success_and_failure(monkeypatch) -> None:
     monkeypatch.setattr(core, "auth_env", lambda: (_ for _ in ()).throw(RuntimeError("no session")))
     result = runner.invoke(app, ["auth", "env"])
     assert result.exit_code == 1
+
+
+# ---- direct unit tests for the small private helpers ----------------------
+
+
+def test_config_path_reads_from_ctx_obj() -> None:
+    from linkedin_mcp.cli import _config_path
+
+    class Ctx:
+        obj = {"config_path": "custom.yaml"}
+
+    assert _config_path(Ctx()) == "custom.yaml"
+
+
+def test_config_path_defaults_to_none_when_missing() -> None:
+    from linkedin_mcp.cli import _config_path
+
+    class CtxEmptyDict:
+        obj = {}
+
+    class CtxNoneObj:
+        obj = None
+
+    assert _config_path(CtxEmptyDict()) is None
+    assert _config_path(CtxNoneObj()) is None
+
+
+def test_write_output_does_nothing_without_a_path(tmp_path, monkeypatch) -> None:
+    from linkedin_mcp.cli import _write_output
+
+    def _boom(*a, **k):
+        raise AssertionError("Path should never be touched when output_file is falsy")
+
+    monkeypatch.setattr("pathlib.Path", _boom)
+    _write_output("", "payload")  # falsy string, same branch as None
+    _write_output(None, "payload")
+
+
+def test_write_output_writes_payload_plus_newline_as_utf8(tmp_path) -> None:
+    from linkedin_mcp.cli import _write_output
+
+    target = tmp_path / "out.txt"
+    _write_output(str(target), "hello")
+    assert target.read_bytes() == b"hello\n"
+    assert target.read_text(encoding="utf-8") == "hello\n"
+
+
+def test_handle_error_prints_a_failed_linkedin_panel_and_exits_1(monkeypatch) -> None:
+    import typer
+
+    from linkedin_mcp.cli import _handle_error
+
+    captured = {}
+    monkeypatch.setattr("linkedin_mcp.cli.build_status_panel", lambda *a, **k: captured.update(args=a) or "panel")
+    printed = []
+    monkeypatch.setattr("linkedin_mcp.cli.console.print", lambda p: printed.append(p))
+
+    with pytest.raises(typer.Exit) as excinfo:
+        _handle_error(ValueError("boom"))
+
+    assert excinfo.value.exit_code == 1
+    assert captured["args"] == ("linkedin", False, "boom")
+    assert printed == ["panel"]
