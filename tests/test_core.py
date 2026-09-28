@@ -382,6 +382,8 @@ def test_messages_send_passes_every_kwarg_exactly(monkeypatch, tmp_path) -> None
     # here too. governor_db_path is a tmp path, not "cfg", so the Governor
     # constructor has something real to open instead of the user's actual
     # ~/.config/linkedin-agent/governor.db.
+    # Updated again for review H2: an explicit `target` (as here) still gets
+    # full dedupe (dedupe=True); only `to`-only sends pace without dedupe.
     from linkedin_mcp.governor import Governor
 
     captured = {}
@@ -407,6 +409,7 @@ def test_messages_send_passes_every_kwarg_exactly(monkeypatch, tmp_path) -> None
         "attachment_name_hint": "Resume.pdf",
         "port": 1234,
         "target": "thread-1",
+        "dedupe": True,
     }
 
 

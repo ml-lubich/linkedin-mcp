@@ -190,7 +190,12 @@ def messages_send(
     # Pace/dedupe through a real Governor whenever there's an identity to pace
     # against -- `target`, or `to` when target wasn't given explicitly --
     # otherwise send_message's own governor check is silently a no-op.
+    # Explicit `target` gets permanent dedupe (a repeat is a bug -- the same
+    # resume/post/thread-id being sent twice). `to`-only is paced by the
+    # rolling budget but never permanently blocked -- replying to the same
+    # person again next week is normal, not a repeat to refuse forever.
     identity = target or to
+    dedupe = bool(target)
     governor = Governor(default_db_path(getattr(config, "governor_db_path", ""))) if identity else None
     try:
         return messaging_mod.send_message(
@@ -202,6 +207,7 @@ def messages_send(
             port=port,
             governor=governor,
             target=identity,
+            dedupe=dedupe,
         )
     finally:
         if governor is not None:

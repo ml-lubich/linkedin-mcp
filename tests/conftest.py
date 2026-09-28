@@ -25,6 +25,24 @@ def _block_real_sockets(monkeypatch):
     monkeypatch.setattr(_socket_mod, "create_connection", _blocked)
 
 
+@pytest.fixture(autouse=True)
+def _default_single_messaging_tab(monkeypatch):
+    """send_message/select_thread/list_threads all resolve linkedin_tab(port)
+    (see review H1 -- every step must pin to the same, host-validated tab),
+    which calls own_chrome.cdp.pages(). Default to a single open messaging
+    tab so tests that don't care about tab resolution don't also have to
+    mock it; a test that does (e.g. test_pinned_tab_targeting.py) overrides
+    this with its own monkeypatch.setattr(messaging, "pages", ...), which
+    wins since it runs after this fixture."""
+    import linkedin_mcp.messaging as messaging_mod
+
+    monkeypatch.setattr(
+        messaging_mod,
+        "pages",
+        lambda port: [{"id": "msg", "url": "https://www.linkedin.com/messaging/", "title": "Messaging"}],
+    )
+
+
 @pytest.fixture
 def config(tmp_path) -> Config:
     """Agent-side (CDP) config fixture, shared by the ported linkedin-agent tests.

@@ -14,7 +14,7 @@ from own_chrome.cdp import ChromeError, evaluate, navigate
 from linkedin_mcp.cdp_session import set_file_input
 from linkedin_mcp.agent_config import Config
 from linkedin_mcp.governor import Governor, default_db_path
-from linkedin_mcp.messaging import SendNotConfirmedError
+from linkedin_mcp.messaging import SendNotConfirmedError, _validate_attachment_path
 
 TAB = "linkedin.com"
 FEED_URL = "https://www.linkedin.com/feed/"
@@ -67,6 +67,11 @@ def publish_post(
     the exact text, so posting the same content twice is refused even if the
     caller forgot to dedupe upstream."""
     cdp_port = port if port is not None else config.cdp_port
+
+    # Same allowlist check as messaging.send_message's attachment_path (see
+    # review A1/H3): validated before anything is touched, confirmed or not.
+    validated_image = _validate_attachment_path(image_path, config) if image_path else None
+
     open_composer(cdp_port)
     time.sleep(0.5)
 
@@ -83,8 +88,8 @@ def publish_post(
         raise SendNotConfirmedError("publish_post requires confirm=True; nothing was posted")
 
     attached = False
-    if image_path:
-        attached = set_file_input(cdp_port, IMAGE_INPUT_SELECTOR, image_path, host=TAB)
+    if validated_image is not None:
+        attached = set_file_input(cdp_port, IMAGE_INPUT_SELECTOR, str(validated_image), host=TAB)
         time.sleep(1.0)
 
     target = hashlib.sha256(text.encode()).hexdigest()[:16]

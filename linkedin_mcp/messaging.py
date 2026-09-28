@@ -116,7 +116,7 @@ def read_thread(port: int, limit: int = 40) -> dict:
     return data
 
 
-def _fill_compose(port: int, text: str) -> None:
+def _fill_compose(port: int, text: str, url_contains: str) -> None:
     script = (
         "((text) => {"
         f"const box = document.querySelector({json.dumps(COMPOSE_SELECTOR)});"
@@ -128,43 +128,43 @@ def _fill_compose(port: int, text: str) -> None:
         "return true;"
         "})(" + json.dumps(text) + ")"
     )
-    ok = evaluate(port, script, host=TAB)
+    ok = evaluate(port, script, url_contains=url_contains)
     if not ok:
         raise ChromeError("compose box not found")
 
 
-def _send_button_enabled(port: int) -> bool:
+def _send_button_enabled(port: int, url_contains: str) -> bool:
     script = (
         f"(() => {{const b = document.querySelector({json.dumps(SEND_BUTTON_SELECTOR)});"
         "return !!b && b.getAttribute('disabled') === null"
         " && b.getAttribute('aria-disabled') !== 'true';})()"
     )
-    return bool(evaluate(port, script, host=TAB))
+    return bool(evaluate(port, script, url_contains=url_contains))
 
 
-def _click_send(port: int) -> None:
+def _click_send(port: int, url_contains: str) -> None:
     script = (
         f"(() => {{const b = document.querySelector({json.dumps(SEND_BUTTON_SELECTOR)}); if (b) b.click(); return !!b;}})()"
     )
-    evaluate(port, script, host=TAB)
+    evaluate(port, script, url_contains=url_contains)
 
 
-def _last_message_text(port: int) -> str:
+def _last_message_text(port: int, url_contains: str) -> str:
     script = (
         "(() => {const items = document.querySelectorAll('.msg-s-event-listitem');"
         "const last = items[items.length - 1]; return last ? last.innerText : '';})()"
     )
-    return evaluate(port, script, host=TAB) or ""
+    return evaluate(port, script, url_contains=url_contains) or ""
 
 
-def _compose_is_empty(port: int) -> bool:
+def _compose_is_empty(port: int, url_contains: str) -> bool:
     # Exactly zero, not "under some small threshold" -- a short sent message
     # like "ok" (2 chars) left un-cleared by a failed send must read as
     # non-empty, not slip under a length-5 cutoff as if it were whitespace.
     script = (
         f"(() => {{const b = document.querySelector({json.dumps(COMPOSE_SELECTOR)}); return !b || b.innerText.trim().length === 0;}})()"
     )
-    return bool(evaluate(port, script, host=TAB))
+    return bool(evaluate(port, script, url_contains=url_contains))
 
 
 def send_message(
@@ -180,19 +180,31 @@ def send_message(
     governor: Governor | None = None,
     target: str = "",
     action: str = "message",
+    dedupe: bool = True,
 ) -> dict:
     """Fill the compose box (and optionally attach a file), then send only
     when confirm=True. Returns a proof dict describing what happened.
 
     governor/target/action: when both governor and target are given, this
-    call is paced and deduped through Governor.check()/.record() (see
-    governor.py) -- refuses a repeat send to the same target and enforces a
-    rolling budget. Without a target there is no identity to dedupe or budget
-    against, so the check is skipped (that's the caller's call to make for a
-    one-off, explicitly-approved reply; the bulk/loop-shaped callers --
-    send_referral_for_candidate, publish_post -- always pass one).
+    call is paced through the governor's rolling budget. Without a target
+    there is no identity to pace against, so the check is skipped (that's
+    the caller's call to make for a one-off, explicitly-approved reply; the
+    bulk/loop-shaped callers -- send_referral_for_candidate, publish_post --
+    always pass one).
+
+    dedupe: when True (default), a repeat send to the same target is refused
+    permanently (Governor.check()/.record()) -- for an explicit, stable
+    `target` identity where a genuine repeat is a bug (referral resume,
+    a post's own text hash). When False, only the rolling budget applies
+    (Governor.check_budget()/.record_paced()) -- for `to`-a-person-by-name
+    sends, where replying to the same person again next week is normal and
+    must not be permanently blocked by the first confirmed send.
     """
     cdp_port = port if port is not None else config.cdp_port
+    # Resolved ONCE and pinned for every remaining step (fill, attach, send,
+    # verify) -- selecting a thread and then typing/sending must never target
+    # different tabs (see linkedin_tab's docstring and test_pinned_tab_targeting.py).
+    target_url = linkedin_tab(cdp_port)["url"]
 
     validated_attachment: Path | None = None
     if attachment_path:
@@ -201,7 +213,7 @@ def send_message(
         # either way, never a silent no-op.
         validated_attachment = _validate_attachment_path(attachment_path, config)
 
-    _fill_compose(cdp_port, text)
+    _fill_compose(cdp_port, text, target_url)
 
     if not confirm:
         raise SendNotConfirmedError(
@@ -216,17 +228,20 @@ def send_message(
 
     attached = False
     if validated_attachment is not None:
-        attached = set_file_input(cdp_port, FILE_INPUT_SELECTOR, str(validated_attachment), host=TAB)
+        attached = set_file_input(cdp_port, FILE_INPUT_SELECTOR, str(validated_attachment), url_contains=target_url)
         if not attached:
             raise ChromeError("no file input found; not sending")
         time.sleep(attach_wait_seconds)
 
     if governor is not None and target:
-        governor.check(action, target)
+        if dedupe:
+            governor.check(action, target)
+        else:
+            governor.check_budget(action)
 
-    if not _send_button_enabled(cdp_port):
+    if not _send_button_enabled(cdp_port, target_url):
         raise ChromeError("send button is disabled; not sending")
-    _click_send(cdp_port)
+    _click_send(cdp_port, target_url)
 
     proof = {"last_has_hint": False, "compose_empty": False}
     # Without an attachment, verify against the text that was actually sent
@@ -235,15 +250,18 @@ def send_message(
     hint = (attachment_name_hint or text).strip().lower()
     for _ in range(verify_attempts):
         time.sleep(verify_wait_seconds)
-        last_text = _last_message_text(cdp_port).lower()
-        proof["compose_empty"] = _compose_is_empty(cdp_port)
+        last_text = _last_message_text(cdp_port, target_url).lower()
+        proof["compose_empty"] = _compose_is_empty(cdp_port, target_url)
         proof["last_has_hint"] = (hint in last_text) if hint else bool(last_text)
         if proof["last_has_hint"] and proof["compose_empty"]:
             break
     proof["attached"] = attached
     proof["sent"] = bool(proof["last_has_hint"] and proof["compose_empty"])
     if governor is not None and target and proof["sent"]:
-        governor.record(action, target)
+        if dedupe:
+            governor.record(action, target)
+        else:
+            governor.record_paced(action)
     return proof
 
 
@@ -251,9 +269,26 @@ def send_message(
 
 
 def linkedin_tab(port: int) -> dict:
-    chosen = choose_linkedin_tab(pages(port))
+    """Resolve the ONE tab every step of a messaging operation (list, select,
+    read, fill, attach, send, verify) must stay pinned to: choose_linkedin_tab's
+    host-validated, messaging-preferring choice -- re-checked here so no
+    OTHER open tab's URL contains it as a substring. own_chrome.cdp's
+    url_contains re-resolves by plain substring on every call, with no
+    hostname check, so a tab crafted to embed our target URL (e.g.
+    https://evil.tld/#https://www.linkedin.com/messaging/) could otherwise
+    be silently picked up by that later re-resolution instead of the tab we
+    actually validated here."""
+    tabs = pages(port)
+    chosen = choose_linkedin_tab(tabs)
     if chosen is None:
         raise ChromeError("No open tab with hostname 'linkedin.com' (or a subdomain of it)")
+    target_url = chosen.get("url") or ""
+    collisions = [t for t in tabs if t is not chosen and target_url and target_url in (t.get("url") or "")]
+    if collisions:
+        raise ChromeError(
+            f"refusing to target {target_url!r}: another open tab's URL also contains it "
+            f"({[t.get('url') for t in collisions]})"
+        )
     return chosen
 
 

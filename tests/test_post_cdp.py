@@ -65,7 +65,9 @@ def test_publish_post_success_with_image(config, monkeypatch):
     monkeypatch.setattr(post_mod, "navigate", lambda *a, **k: None)
     monkeypatch.setattr(post_mod, "evaluate", lambda *a, **k: True)
     monkeypatch.setattr(post_mod, "set_file_input", lambda *a, **k: True)
-    result = post_mod.publish_post("hello world", config, confirm=True, image_path="/tmp/meme.png")
+    # A real, allowlisted file -- see review H3: image_path is now validated
+    # the same way messaging.send_message's attachment_path is.
+    result = post_mod.publish_post("hello world", config, confirm=True, image_path=config.referral.resume_path)
     assert result == {"clicked_post": True, "attached_image": True}
 
 

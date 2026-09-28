@@ -25,7 +25,7 @@ def test_compose_is_empty_requires_truly_zero_length_not_under_five(monkeypatch)
         return True
 
     monkeypatch.setattr(messaging, "evaluate", fake_evaluate)
-    assert messaging._compose_is_empty(9222) is False
+    assert messaging._compose_is_empty(9222, "https://www.linkedin.com/messaging/") is False
     assert any("=== 0" in c for c in calls), "must check for exactly zero length, not a small threshold"
 
 
@@ -81,7 +81,7 @@ def test_send_button_enabled_honors_aria_disabled(monkeypatch):
         return False  # button reports aria-disabled=true -> not enabled
 
     monkeypatch.setattr(messaging, "evaluate", fake_evaluate)
-    assert messaging._send_button_enabled(9222) is False
+    assert messaging._send_button_enabled(9222, "https://www.linkedin.com/messaging/") is False
     assert any("aria-disabled" in c for c in calls)
 
 

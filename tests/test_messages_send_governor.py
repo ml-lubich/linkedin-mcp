@@ -84,3 +84,39 @@ def test_no_governor_constructed_without_a_target(config, monkeypatch):
     core.messages_send("hi", confirm=True)
 
     assert captured.get("governor") is None
+
+
+# ---- H2: `to`-only paces without permanent dedupe; `target` still dedupes --
+
+
+def test_two_confirmed_sends_with_the_same_to_both_reach_send_message(config, monkeypatch):
+    monkeypatch.setattr(core, "load_agent_config", lambda path=None: config)
+    monkeypatch.setattr(core.messaging_mod, "select_thread", lambda port, name: {"ok": True, "ambiguous": False})
+
+    core.messages_send("hi", to="John", confirm=True)
+    result = core.messages_send("hi", to="John", confirm=True)  # must not raise
+
+    assert result["sent"] is True
+
+
+def test_budget_exhaustion_via_to_still_raises_rate_limited(config, monkeypatch):
+    from linkedin_mcp.governor import LIMITS, RateLimited
+
+    monkeypatch.setattr(core, "load_agent_config", lambda path=None: config)
+    monkeypatch.setattr(core.messaging_mod, "select_thread", lambda port, name: {"ok": True, "ambiguous": False})
+
+    limit, _window = LIMITS["message"]
+    for _ in range(limit):
+        core.messages_send("hi", to="John", confirm=True)
+    with pytest.raises(RateLimited):
+        core.messages_send("hi", to="John", confirm=True)
+
+
+def test_same_explicit_target_twice_is_rate_limited(config, monkeypatch):
+    from linkedin_mcp.governor import RateLimited
+
+    monkeypatch.setattr(core, "load_agent_config", lambda path=None: config)
+
+    core.messages_send("hi", target="thread-1", confirm=True)
+    with pytest.raises(RateLimited):
+        core.messages_send("hi", target="thread-1", confirm=True)
