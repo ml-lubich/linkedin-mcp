@@ -28,6 +28,7 @@ from . import referral as referral_mod
 from . import scan as scan_mod
 from .agent_config import Config as AgentConfig
 from .agent_config import load_config as load_agent_config
+from .governor import Governor, default_db_path
 from .auth import collect_auth_diagnostics
 from .client import LinkedInClient
 from .guard import require_confirm
@@ -181,16 +182,30 @@ def messages_send(
     config = _agent_config(config_path)
     if to:
         cdp_port = port if port is not None else config.cdp_port
-        messaging_mod.select_thread(cdp_port, to)
-    return messaging_mod.send_message(
-        text=text,
-        config=config,
-        confirm=confirm,
-        attachment_path=attach,
-        attachment_name_hint=attach_name,
-        port=port,
-        target=target,
-    )
+        selection = messaging_mod.select_thread(cdp_port, to)
+        if selection.get("ambiguous"):
+            raise ValueError(f"'{to}' is ambiguous; matches: {selection.get('matches')}")
+        if not selection.get("ok"):
+            raise ValueError(f"no thread matched '{to}'")
+    # Pace/dedupe through a real Governor whenever there's an identity to pace
+    # against -- `target`, or `to` when target wasn't given explicitly --
+    # otherwise send_message's own governor check is silently a no-op.
+    identity = target or to
+    governor = Governor(default_db_path(getattr(config, "governor_db_path", ""))) if identity else None
+    try:
+        return messaging_mod.send_message(
+            text=text,
+            config=config,
+            confirm=confirm,
+            attachment_path=attach,
+            attachment_name_hint=attach_name,
+            port=port,
+            governor=governor,
+            target=identity,
+        )
+    finally:
+        if governor is not None:
+            governor.close()
 
 
 def messages_threads(
@@ -228,7 +243,9 @@ def messages_popups(
 
 def messages_workflow(spec_path: str, text: str = "", port: Optional[int] = None, config_path: Optional[str] = None) -> dict:
     """Classify the open thread (or `text`) and draft a reply. Never sends."""
-    return messaging_mod.workflow_run(spec_path, text=text, port=port)
+    config = _agent_config(config_path)
+    cdp_port = port if port is not None else config.cdp_port
+    return messaging_mod.workflow_run(spec_path, text=text, port=cdp_port)
 
 
 def messages_commands() -> dict:

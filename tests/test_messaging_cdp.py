@@ -123,14 +123,26 @@ def test_list_threads_no_navigate_skips_navigation(monkeypatch):
 
 def test_select_thread_ambiguous(monkeypatch):
     monkeypatch.setattr(messaging, "pages", lambda port: [_MESSAGING_TAB])
-    monkeypatch.setattr(
-        messaging,
-        "evaluate",
-        lambda port, expr, **kw: json.dumps({"action": "select", "ok": False, "ambiguous": True, "matches": ["Ada Lovelace", "Ada Wong"], "matched": ""}),
-    )
+    click_calls = []
+
+    def fake_evaluate(port, expr, **kw):
+        if '"query": "threads"' in expr:
+            return json.dumps(
+                {
+                    "threads": [
+                        {"name": "Ada Lovelace", "href": "/messaging/thread/1/", "preview": "", "unread": False},
+                        {"name": "Ada Wong", "href": "/messaging/thread/2/", "preview": "", "unread": False},
+                    ]
+                }
+            )
+        click_calls.append(expr)
+        raise AssertionError("must not click when ambiguous")
+
+    monkeypatch.setattr(messaging, "evaluate", fake_evaluate)
     result = messaging.select_thread(9222, "Ada")
     assert result["ambiguous"] is True
-    assert result["matches"] == ["Ada Lovelace", "Ada Wong"]
+    assert set(result["matches"]) == {"Ada Lovelace", "Ada Wong"}
+    assert click_calls == []
 
 
 def test_select_thread_no_match(monkeypatch):
@@ -138,11 +150,34 @@ def test_select_thread_no_match(monkeypatch):
     monkeypatch.setattr(
         messaging,
         "evaluate",
-        lambda port, expr, **kw: json.dumps({"action": "select", "ok": False, "ambiguous": False, "matches": [], "matched": ""}),
+        lambda port, expr, **kw: json.dumps({"threads": [{"name": "Someone Else", "href": "/messaging/thread/9/"}]}),
     )
     result = messaging.select_thread(9222, "Nobody")
     assert result["ok"] is False
     assert result["ambiguous"] is False
+
+
+def test_select_thread_exact_match_clicks_by_href(monkeypatch):
+    monkeypatch.setattr(messaging, "pages", lambda port: [_MESSAGING_TAB])
+    captured = {}
+
+    def fake_evaluate(port, expr, **kw):
+        if '"query": "threads"' in expr:
+            return json.dumps(
+                {
+                    "threads": [
+                        {"name": "Ada Lovelace", "href": "/messaging/thread/1/", "preview": "", "unread": False},
+                        {"name": "Ada Wong", "href": "/messaging/thread/2/", "preview": "", "unread": False},
+                    ]
+                }
+            )
+        captured["expr"] = expr
+        return json.dumps({"action": "select", "ok": True, "matched": "Ada Lovelace"})
+
+    monkeypatch.setattr(messaging, "evaluate", fake_evaluate)
+    result = messaging.select_thread(9222, "Ada Lovelace")
+    assert result["ok"] is True
+    assert '"href": "/messaging/thread/1/"' in captured["expr"]
 
 
 def test_select_thread_blank_name_raises_value_error():
@@ -237,3 +272,31 @@ def test_complete_http_error_raises_chrome_error(monkeypatch):
     monkeypatch.setattr(messaging.urllib.request, "urlopen", raise_error)
     with pytest.raises(ChromeError, match="OpenAI 429"):
         messaging.complete("gpt-5-nano", [])
+
+
+def test_list_threads_filters_unread_before_applying_limit(monkeypatch):
+    """Correctness fix (review B3): if the first N rendered threads are
+    mostly read, --unread --limit N must not silently return fewer than N
+    unread threads when more exist further down the page."""
+    monkeypatch.setattr(messaging, "pages", lambda port: [_MESSAGING_TAB])
+    # 5 read threads followed by 3 unread ones -- an old "cap while
+    # collecting, then filter" implementation would return 0 unread threads
+    # for limit=3 (all 3 slots consumed by the read ones first).
+    threads = [{"name": f"Read {i}", "href": f"/t/{i}/", "unread": False} for i in range(5)]
+    threads += [{"name": f"Unread {i}", "href": f"/t/u{i}/", "unread": True} for i in range(3)]
+    monkeypatch.setattr(messaging, "evaluate", lambda port, expr, **kw: {"threads": threads})
+
+    result = messaging.list_threads(9222, kind="unread", limit=3, no_navigate=True)
+
+    assert len(result["threads"]) == 3
+    assert all(t["unread"] for t in result["threads"])
+
+
+def test_list_threads_applies_limit_after_unread_filter_not_before(monkeypatch):
+    monkeypatch.setattr(messaging, "pages", lambda port: [_MESSAGING_TAB])
+    threads = [{"name": f"Unread {i}", "href": f"/t/{i}/", "unread": True} for i in range(5)]
+    monkeypatch.setattr(messaging, "evaluate", lambda port, expr, **kw: {"threads": threads})
+
+    result = messaging.list_threads(9222, kind="unread", limit=2, no_navigate=True)
+
+    assert len(result["threads"]) == 2

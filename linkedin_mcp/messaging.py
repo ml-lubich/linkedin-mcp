@@ -31,7 +31,14 @@ from own_chrome.cdp import ChromeError, evaluate, navigate, open_tab, pages
 from linkedin_mcp.agent_config import Config
 from linkedin_mcp.cdp_session import set_file_input
 from linkedin_mcp.governor import Governor
-from linkedin_mcp.messages_actions import act_expression, choose_linkedin_tab, choose_popup_action, thread_query_expression, validate_linkedin_url
+from linkedin_mcp.messages_actions import (
+    act_expression,
+    choose_linkedin_tab,
+    choose_popup_action,
+    match_thread,
+    thread_query_expression,
+    validate_linkedin_url,
+)
 
 TAB = "linkedin.com"
 MESSAGING = "https://www.linkedin.com/messaging/"
@@ -129,7 +136,8 @@ def _fill_compose(port: int, text: str) -> None:
 def _send_button_enabled(port: int) -> bool:
     script = (
         f"(() => {{const b = document.querySelector({json.dumps(SEND_BUTTON_SELECTOR)});"
-        "return !!b && b.getAttribute('disabled') === null;})()"
+        "return !!b && b.getAttribute('disabled') === null"
+        " && b.getAttribute('aria-disabled') !== 'true';})()"
     )
     return bool(evaluate(port, script, host=TAB))
 
@@ -150,8 +158,11 @@ def _last_message_text(port: int) -> str:
 
 
 def _compose_is_empty(port: int) -> bool:
+    # Exactly zero, not "under some small threshold" -- a short sent message
+    # like "ok" (2 chars) left un-cleared by a failed send must read as
+    # non-empty, not slip under a length-5 cutoff as if it were whitespace.
     script = (
-        f"(() => {{const b = document.querySelector({json.dumps(COMPOSE_SELECTOR)}); return !b || b.innerText.trim().length < 5;}})()"
+        f"(() => {{const b = document.querySelector({json.dumps(COMPOSE_SELECTOR)}); return !b || b.innerText.trim().length === 0;}})()"
     )
     return bool(evaluate(port, script, host=TAB))
 
@@ -218,7 +229,10 @@ def send_message(
     _click_send(cdp_port)
 
     proof = {"last_has_hint": False, "compose_empty": False}
-    hint = (attachment_name_hint or "").lower()
+    # Without an attachment, verify against the text that was actually sent
+    # -- "any non-empty last message" would also pass for a stale, unrelated
+    # older message that was already in the thread before this call.
+    hint = (attachment_name_hint or text).strip().lower()
     for _ in range(verify_attempts):
         time.sleep(verify_wait_seconds)
         last_text = _last_message_text(cdp_port).lower()
@@ -313,23 +327,51 @@ def list_threads(port: int, kind: str = "threads", needle: str = "", limit: int 
     Prefers an already-open messaging tab; navigates a lone feed tab there
     first unless no_navigate=True."""
     if not no_navigate:
-        ensure_messaging(port)
+        info = ensure_messaging(port)
+        if not info.get("ready", True):
+            raise ChromeError(f"messaging tab not ready ({info})")
     raw = _eval_on_linkedin_tab(port, thread_query_expression(kind, needle, limit))
     payload = _as_dict(raw)
+    threads = payload.get("threads") or []
     if kind == "unread":
-        payload["threads"] = [t for t in (payload.get("threads") or []) if t.get("unread")]
+        threads = [t for t in threads if t.get("unread")]
+    payload["threads"] = threads[: max(limit, 0)] if limit else threads
     return payload
 
 
 def select_thread(port: int, name: str) -> dict:
-    """Open the one thread whose name contains `name`. `ambiguous=True` and
-    no click when several match; `ok=False` when none match."""
+    """Open the thread whose name matches `name`. Matching happens in Python
+    (match_thread: exact-name preferred over substring, deduped by href, not
+    display name) against a fresh thread listing, then the page clicks the
+    exact href it was told to -- never picks a thread the page itself
+    disambiguated by a substring match. `ambiguous=True` and no click when
+    several match; `ok=False` when none match."""
     name = (name or "").strip()
     if not name:
         raise ValueError("name is required")
-    ensure_messaging(port)
-    raw = _eval_on_linkedin_tab(port, act_expression("select", name, "", False))
-    return _as_dict(raw)
+    info = ensure_messaging(port)
+    if not info.get("ready", True):
+        raise ChromeError(f"messaging tab not ready ({info})")
+    listing = _as_dict(_eval_on_linkedin_tab(port, thread_query_expression("threads", "", 500)))
+    decision = match_thread(listing.get("threads") or [], name)
+    if not decision["ok"]:
+        return {
+            "action": "select",
+            "ok": False,
+            "sent": False,
+            "matched": "",
+            "chars": 0,
+            "ambiguous": decision["ambiguous"],
+            "matches": [m.get("name", "") for m in decision["matches"]],
+        }
+    raw = _eval_on_linkedin_tab(
+        port, act_expression("select", decision["matched_name"], "", False, href=decision["matched_href"])
+    )
+    result = _as_dict(raw)
+    # The href Python already disambiguated with -- callers (scan.py) use it
+    # to verify the opened thread is actually this one before trusting a read.
+    result["href"] = decision["matched_href"]
+    return result
 
 
 # ---- dialog popups ----------------------------------------------------------

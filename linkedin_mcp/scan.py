@@ -65,14 +65,27 @@ def find_referral_candidates(
     for thread in threads:
         name = thread.get("name", "")
         preview = thread.get("preview", "")
-        if not name or preview.startswith("You"):
+        if not name or preview.startswith("You:"):
             continue
         selection = messaging.select_thread(cdp_port, name)
         if not selection.get("ok") or selection.get("ambiguous"):
             continue  # click missed, ambiguous, or wrong thread opened
-        if click_settle_seconds:
-            time.sleep(click_settle_seconds)
-        data = messaging.read_thread(cdp_port, limit=read_limit)
+        # select_thread's own "ok" only proves a composer exists, not that
+        # it's specifically this thread's -- the click can race ahead of the
+        # navigation. Verify by href before trusting the read, retrying a
+        # few times instead of hoping a fixed sleep was long enough.
+        href = selection.get("href") or ""
+        data: dict = {}
+        verified = not href
+        for _attempt in range(5):
+            data = messaging.read_thread(cdp_port, limit=read_limit)
+            if not href or href in (data.get("url") or ""):
+                verified = True
+                break
+            if click_settle_seconds:
+                time.sleep(click_settle_seconds)
+        if not verified:
+            continue
         text = "\n".join(data.get("bodies") or [])
         speakers = data.get("speakers") or []
         last_speaker_is_self = bool(config.self_name) and bool(speakers) and speakers[-1] == config.self_name

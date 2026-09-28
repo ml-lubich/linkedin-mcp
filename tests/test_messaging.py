@@ -108,7 +108,7 @@ def test_send_message_with_governor_checks_before_sending(config, monkeypatch, t
             return True
         if ".click(); return !!b" in script:
             return True
-        return "delivered"
+        return "delivered hello hi"
 
     monkeypatch.setattr(messaging, "evaluate", fake_evaluate)
     gov = Governor(tmp_path / "gov.db", now=1_000_000.0)
@@ -166,7 +166,7 @@ def test_send_message_without_target_skips_governor_entirely(config, monkeypatch
             return True
         if ".click(); return !!b" in script:
             return True
-        return "delivered"
+        return "delivered hello hi"
 
     monkeypatch.setattr(messaging, "evaluate", fake_evaluate)
     gov = Governor(tmp_path / "gov.db", now=1_000_000.0)

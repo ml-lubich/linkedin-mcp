@@ -170,14 +170,20 @@ def test_messages_workflow_delegates(monkeypatch) -> None:
 
 
 def test_messages_workflow_passes_every_arg_exactly_including_defaults(monkeypatch) -> None:
+    # Updated for review B4: port=None used to reach workflow_run verbatim
+    # (which then silently skipped reading the open thread, since its own
+    # `port is not None` guard was never true by default) -- it must fall
+    # back to config.cdp_port here instead. See
+    # test_messages_workflow_port_fallback.py for the focused regression test.
     captured = {}
+    monkeypatch.setattr(core, "load_agent_config", lambda path=None: type("C", (), {"cdp_port": 9999})())
     monkeypatch.setattr(
         core.messaging_mod,
         "workflow_run",
         lambda spec_path, text, port: captured.update(spec_path=spec_path, text=text, port=port) or {"go": False},
     )
     core.messages_workflow("spec.json")
-    assert captured == {"spec_path": "spec.json", "text": "", "port": None}
+    assert captured == {"spec_path": "spec.json", "text": "", "port": 9999}
 
     core.messages_workflow("other.json", text="hello", port=42)
     assert captured == {"spec_path": "other.json", "text": "hello", "port": 42}

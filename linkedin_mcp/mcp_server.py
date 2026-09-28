@@ -43,8 +43,10 @@ def _untrusted(payload: object) -> dict:
 
 @mcp.tool()
 def auth_status(config_path: Optional[str] = None) -> dict:
-    """Validate the current LinkedIn session and return identity metadata."""
-    return core.auth_status(config_path)
+    """Validate the current LinkedIn session; return full diagnostics
+    (source, probes, validation, hint) -- the same core function
+    `linkedin auth-status` uses, so the two surfaces never disagree."""
+    return core.auth_diagnostics(config_path=config_path)
 
 
 @mcp.tool()

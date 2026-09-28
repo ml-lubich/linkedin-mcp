@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 import urllib.parse
 from typing import Callable
 
@@ -66,6 +67,59 @@ def on_messaging(url: str) -> bool:
     return parsed.path.startswith("/messaging")
 
 
+def _normalize_name(name: str) -> str:
+    """Unicode-normalize, casefold, and collapse whitespace so "  Ada   " and
+    "ada" compare equal, and accented/composed characters compare correctly."""
+    normalized = unicodedata.normalize("NFKC", (name or "")).casefold()
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def match_thread(threads: list[dict], query: str) -> dict:
+    """Pick the thread whose name matches `query`, from a list of dicts each
+    with at least "name" and "href". Dedupes candidates by href (a stable
+    per-thread id) before matching -- never by display name, so two
+    distinct threads that happen to share a name are never silently
+    collapsed into one and hidden from the ambiguity check.
+
+    Prefers an exact (normalized) name match over a substring one. Returns
+    {"ok", "ambiguous", "matched_name", "matched_href", "matches"}; `matches`
+    lists every remaining candidate when ambiguous.
+    """
+    q = _normalize_name(query)
+    if not q:
+        return {"ok": False, "ambiguous": False, "matched_name": "", "matched_href": "", "matches": []}
+
+    seen_hrefs: set[str] = set()
+    deduped: list[dict] = []
+    for thread in threads:
+        href = thread.get("href") or ""
+        key = href or id(thread)
+        if key in seen_hrefs:
+            continue
+        seen_hrefs.add(key)
+        deduped.append(thread)
+
+    def _pick(candidates: list[dict]) -> dict:
+        if len(candidates) == 1:
+            winner = candidates[0]
+            return {
+                "ok": True,
+                "ambiguous": False,
+                "matched_name": winner.get("name", ""),
+                "matched_href": winner.get("href", ""),
+                "matches": [],
+            }
+        return {"ok": False, "ambiguous": True, "matched_name": "", "matched_href": "", "matches": candidates}
+
+    exact = [t for t in deduped if _normalize_name(t.get("name", "")) == q]
+    if exact:
+        return _pick(exact)
+    substring = [t for t in deduped if q in _normalize_name(t.get("name", ""))]
+    if substring:
+        return _pick(substring)
+    return {"ok": False, "ambiguous": False, "matched_name": "", "matched_href": "", "matches": []}
+
+
 def choose_linkedin_tab(tabs: list[dict]) -> dict | None:
     """Prefer an open messaging tab. A feed tab listed first must not win."""
     linkedin = [tab for tab in tabs if _linkedin_host(str(tab.get("url") or ""))]
@@ -93,17 +147,26 @@ _THREAD_QUERY_JS = r"""
   const threads = [];
   for (const el of document.querySelectorAll(".msg-conversation-listitem, .msg-conversation-card")) {
     const name = nameOf(el);
-    if (!name || seen.has(name)) continue;
-    seen.add(name);
+    const link = el.querySelector("a");
+    const href = link ? (link.getAttribute("href") || "") : "";
+    // Dedupe by href (a stable per-thread id), never by display name -- two
+    // distinct threads can legitimately share a name.
+    const dedupeKey = href || name;
+    if (!name || !dedupeKey || seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
     const previewNode = el.querySelector(".msg-conversation-card__message-snippet, .msg-conversation-listitem__message-snippet");
     const unread = /unread/i.test(el.className) || !!el.querySelector(".notification-badge, .msg-conversation-card__unread-count");
     if (q && !name.toLowerCase().includes(q) && !(previewNode && previewNode.innerText.toLowerCase().includes(q))) continue;
     threads.push({
       name,
+      href,
       preview: previewNode ? previewNode.innerText.trim() : "",
       unread
     });
-    if (threads.length >= limit) break;
+    // No length cap here: unread-filtering and the limit itself are applied
+    // by the Python caller, in that order (see messaging.list_threads) --
+    // capping here first would silently drop unread threads that happen to
+    // be past the first `limit` rendered cards.
   }
   const lines = [...document.querySelectorAll(".msg-s-event-listitem")]
     .map((n) => n.innerText.trim())
@@ -153,13 +216,23 @@ ACT_JS = r"""async (opts) => {
     const sent = clickSend();
     return {action: "send", ok: sent, sent: sent, matched: "", chars: 0, ambiguous: false, matches: []};
   }
+  const wantHref = String(opts.href || "");
   const seen = new Set();
   const matches = [];
   for (const el of document.querySelectorAll(".msg-conversation-listitem, .msg-conversation-card")) {
     const n = nameOf(el);
-    if (!n || seen.has(n)) continue;
-    if (!q || !n.toLowerCase().includes(q)) continue;
-    seen.add(n);
+    const link = el.querySelector("a");
+    const href = link ? (link.getAttribute("href") || "") : "";
+    const dedupeKey = href || n;
+    if (!n || !dedupeKey || seen.has(dedupeKey)) continue;
+    if (wantHref) {
+      // Caller already disambiguated by href (see messages_actions.match_thread) --
+      // an exact, unambiguous-by-construction match, never a substring one.
+      if (href !== wantHref) continue;
+    } else if (!q || !n.toLowerCase().includes(q)) {
+      continue;
+    }
+    seen.add(dedupeKey);
     matches.push({name: n, el: el});
   }
   if (matches.length === 0) {
@@ -240,8 +313,10 @@ def ready_expression() -> str:
     return f"({READY_JS})()"
 
 
-def act_expression(op: str, name: str, text: str, send: bool) -> str:
-    opts = json.dumps({"op": op, "name": name, "text": text, "send": send}, ensure_ascii=False)
+def act_expression(op: str, name: str, text: str, send: bool, href: str = "") -> str:
+    """`href`, when given, is a stable per-thread id already disambiguated by
+    match_thread() -- the page matches by exact href, not name substring."""
+    opts = json.dumps({"op": op, "name": name, "text": text, "send": send, "href": href}, ensure_ascii=False)
     return f"({ACT_JS})({opts})"
 
 

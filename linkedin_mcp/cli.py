@@ -403,13 +403,14 @@ def scan(
 
 @app.command()
 def classify(
+    ctx: typer.Context,
     text: str,
     name: str = typer.Option("", "--name"),
     headline: str = typer.Option("", "--headline"),
     as_json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
 ) -> None:
     """Classify a message: hiring? excluded? already referred?"""
-    result = core.classify_message(text, name=name, headline=headline)
+    result = core.classify_message(text, name=name, headline=headline, config_path=_config_path(ctx))
     if as_json:
         typer.echo(to_json(result))
         return
@@ -430,6 +431,7 @@ def post_cdp_draft_cmd(text: str, as_json: bool = typer.Option(False, "--json"))
 
 @post_cdp_app.command("publish")
 def post_cdp_publish_cmd(
+    ctx: typer.Context,
     text: str,
     image: Optional[str] = typer.Option(None, "--image"),
     confirm: bool = typer.Option(False, "--confirm", help="Actually click Post. Without this, nothing is published."),
@@ -437,7 +439,7 @@ def post_cdp_publish_cmd(
 ) -> None:
     """Fill the composer and, only with --confirm, publish (own logged-in Chrome via CDP)."""
     try:
-        result = core.post_cdp_publish(text, image=image, confirm=confirm)
+        result = core.post_cdp_publish(text, image=image, confirm=confirm, config_path=_config_path(ctx))
     except Exception as exc:
         _handle_error(exc)
         return
@@ -448,9 +450,9 @@ def post_cdp_publish_cmd(
 
 
 @messages_app.command("open")
-def messages_open_cmd(as_json: bool = typer.Option(False, "--json")) -> None:
+def messages_open_cmd(ctx: typer.Context, as_json: bool = typer.Option(False, "--json")) -> None:
     """Open LinkedIn messaging in the attached Chrome. Creates a tab if needed."""
-    info = core.messages_open()
+    info = core.messages_open(config_path=_config_path(ctx))
     if as_json:
         typer.echo(to_json(info))
         return
@@ -459,6 +461,7 @@ def messages_open_cmd(as_json: bool = typer.Option(False, "--json")) -> None:
 
 @messages_app.command("threads")
 def messages_threads_cmd(
+    ctx: typer.Context,
     filter_: str = typer.Option("", "--filter", help="Case-insensitive match on name or preview."),
     limit: int = typer.Option(20, "--limit"),
     unread: bool = typer.Option(False, "--unread", help="Only unread threads."),
@@ -466,7 +469,7 @@ def messages_threads_cmd(
     as_json: bool = typer.Option(False, "--json"),
 ) -> None:
     """List messaging threads."""
-    data = core.messages_threads(needle=filter_, limit=limit, unread=unread, no_navigate=no_navigate)
+    data = core.messages_threads(needle=filter_, limit=limit, unread=unread, no_navigate=no_navigate, config_path=_config_path(ctx))
     if as_json:
         typer.echo(to_json(data))
         return
@@ -479,11 +482,12 @@ def messages_threads_cmd(
 
 @messages_app.command("select")
 def messages_select_cmd(
+    ctx: typer.Context,
     name: str = typer.Argument(help="Thread name, or a unique piece of it."),
     as_json: bool = typer.Option(False, "--json"),
 ) -> None:
     """Open the one thread whose name contains NAME. Exits 2 if none match, 3 if several match."""
-    result = core.messages_select(name)
+    result = core.messages_select(name, config_path=_config_path(ctx))
     if as_json:
         typer.echo(to_json(result))
     else:
@@ -496,12 +500,13 @@ def messages_select_cmd(
 
 @messages_app.command("read")
 def messages_read_cmd(
+    ctx: typer.Context,
     url: str = typer.Option("", "--url"),
     limit: int = typer.Option(40, "--limit"),
     as_json: bool = typer.Option(False, "--json"),
 ) -> None:
     """Read the open thread (or one you name with --url)."""
-    data = core.messages_read(url=url, limit=limit)
+    data = core.messages_read(url=url, limit=limit, config_path=_config_path(ctx))
     if as_json:
         typer.echo(to_json(data))
         return
@@ -511,6 +516,7 @@ def messages_read_cmd(
 
 @messages_app.command("send")
 def messages_send_cmd(
+    ctx: typer.Context,
     text: str,
     to: str = typer.Option("", "--to", help="Select this thread by name before typing."),
     attach: Optional[str] = typer.Option(None, "--attach"),
@@ -521,7 +527,7 @@ def messages_send_cmd(
 ) -> None:
     """Select a thread by --to (if given) and type TEXT. Sends only with --confirm."""
     try:
-        proof = core.messages_send(text, to=to, attach=attach, attach_name=attach_name, target=target, confirm=confirm)
+        proof = core.messages_send(text, to=to, attach=attach, attach_name=attach_name, target=target, confirm=confirm, config_path=_config_path(ctx))
     except Exception as exc:
         _handle_error(exc)
         return
@@ -533,11 +539,12 @@ def messages_send_cmd(
 
 @messages_app.command("popups")
 def messages_popups_cmd(
+    ctx: typer.Context,
     apply: bool = typer.Option(False, "--apply", help="Click the configured button. Default policy declines."),
     as_json: bool = typer.Option(False, "--json"),
 ) -> None:
     """Report the open LinkedIn dialog. Without --apply, nothing is clicked."""
-    result = core.messages_popups(apply=apply)
+    result = core.messages_popups(apply=apply, config_path=_config_path(ctx))
     if as_json:
         typer.echo(to_json(result))
         return
@@ -546,12 +553,13 @@ def messages_popups_cmd(
 
 @messages_app.command("workflow")
 def messages_workflow_cmd(
+    ctx: typer.Context,
     spec: str = typer.Argument(help="Path to the workflow JSON."),
     text: str = typer.Option("", "--text", help="Thread text. Default is the open thread."),
     as_json: bool = typer.Option(False, "--json"),
 ) -> None:
     """Classify the open thread and draft a reply. Never sends -- sent is always false."""
-    result = core.messages_workflow(spec, text=text)
+    result = core.messages_workflow(spec, text=text, config_path=_config_path(ctx))
     if as_json:
         typer.echo(to_json(result))
         raise typer.Exit(0 if result.get("go") or result.get("reason") == "regex miss" else 2)
@@ -572,6 +580,7 @@ def messages_commands_cmd(as_json: bool = typer.Option(False, "--json")) -> None
 
 @referral_app.command("draft")
 def referral_draft_cmd(
+    ctx: typer.Context,
     name: str,
     text: str,
     headline: str = typer.Option("", "--headline"),
@@ -581,7 +590,9 @@ def referral_draft_cmd(
 ) -> None:
     """Draft a referral message. Never touches the browser."""
     try:
-        result = core.referral_draft(name, text, headline=headline, reengage=reengage, stale_days=stale_days)
+        result = core.referral_draft(
+            name, text, headline=headline, reengage=reengage, stale_days=stale_days, config_path=_config_path(ctx)
+        )
     except Exception as exc:
         _handle_error(exc)
         return
@@ -594,6 +605,7 @@ def referral_draft_cmd(
 
 @referral_app.command("send")
 def referral_send_cmd(
+    ctx: typer.Context,
     name: str,
     url: str,
     text: str = typer.Option("", "--text"),
@@ -603,7 +615,7 @@ def referral_send_cmd(
 ) -> None:
     """Draft and, only with --confirm, send a referral (text + resume)."""
     try:
-        result = core.referral_send(name, url, text=text, stamp=stamp, confirm=confirm)
+        result = core.referral_send(name, url, text=text, stamp=stamp, confirm=confirm, config_path=_config_path(ctx))
     except Exception as exc:
         _handle_error(exc)
         return

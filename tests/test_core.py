@@ -375,9 +375,18 @@ def test_messages_send_delegates_with_confirm(monkeypatch) -> None:
     assert captured["target"] == "t1"
 
 
-def test_messages_send_passes_every_kwarg_exactly(monkeypatch) -> None:
+def test_messages_send_passes_every_kwarg_exactly(monkeypatch, tmp_path) -> None:
+    # Updated for review B5: messages_send now paces/dedupes any send that
+    # has a `target` through a real Governor (previously silently a no-op --
+    # see test_messages_send_governor.py), so a governor object is expected
+    # here too. governor_db_path is a tmp path, not "cfg", so the Governor
+    # constructor has something real to open instead of the user's actual
+    # ~/.config/linkedin-agent/governor.db.
+    from linkedin_mcp.governor import Governor
+
     captured = {}
-    monkeypatch.setattr(core, "load_agent_config", lambda path=None: "cfg")
+    config = type("Cfg", (), {"governor_db_path": str(tmp_path / "g.db")})()
+    monkeypatch.setattr(core, "load_agent_config", lambda path=None: config)
     monkeypatch.setattr(core.messaging_mod, "send_message", lambda **kw: captured.update(kw) or {"sent": True})
 
     core.messages_send(
@@ -388,9 +397,11 @@ def test_messages_send_passes_every_kwarg_exactly(monkeypatch) -> None:
         confirm=True,
         port=1234,
     )
+    governor = captured.pop("governor", None)
+    assert isinstance(governor, Governor)
     assert captured == {
         "text": "hello",
-        "config": "cfg",
+        "config": config,
         "confirm": True,
         "attachment_path": "/tmp/resume.pdf",
         "attachment_name_hint": "Resume.pdf",

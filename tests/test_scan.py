@@ -269,7 +269,13 @@ def test_find_referral_candidates_skips_thread_with_no_name(config, monkeypatch)
     assert candidates == {}
 
 
-def test_find_referral_candidates_settles_before_reading(config, monkeypatch):
+def test_find_referral_candidates_does_not_settle_sleep_when_there_is_nothing_to_verify(config, monkeypatch):
+    # Updated for review B8: a fixed settle-sleep before every read was
+    # replaced with verifying the opened thread's href before trusting the
+    # read (see test_scan_verify_selection.py), retrying with a sleep only
+    # when that verification doesn't match yet. select_thread here reports
+    # no href (nothing to verify against), so no settle-sleep is expected --
+    # it no longer fires unconditionally.
     monkeypatch.setattr(scan_mod, "evaluate", lambda *a, **k: True)
     monkeypatch.setattr(scan_mod.messaging, "ensure_messaging", lambda port: None)
     monkeypatch.setattr(
@@ -284,4 +290,4 @@ def test_find_referral_candidates_settles_before_reading(config, monkeypatch):
     slept = []
     monkeypatch.setattr(scan_mod.time, "sleep", lambda s: slept.append(s))
     scan_mod.find_referral_candidates(config, scroll_rounds=0, sleep_seconds=0, click_settle_seconds=3.25)
-    assert slept == [3.25]
+    assert slept == []

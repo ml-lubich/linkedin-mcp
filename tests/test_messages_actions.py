@@ -39,8 +39,15 @@ def test_ready_expression_is_an_async_iife():
 
 def test_act_expression_embeds_escaped_payload():
     expr = act_expression("tell", 'Ann "A"', "hi\nthere", False)
-    payload = json.dumps({"op": "tell", "name": 'Ann "A"', "text": "hi\nthere", "send": False}, ensure_ascii=False)
+    payload = json.dumps(
+        {"op": "tell", "name": 'Ann "A"', "text": "hi\nthere", "send": False, "href": ""}, ensure_ascii=False
+    )
     assert payload in expr
+
+
+def test_act_expression_embeds_the_disambiguated_href():
+    expr = act_expression("select", "Ann", "", False, href="/messaging/thread/42/")
+    assert '"href": "/messaging/thread/42/"' in expr
 
 
 def test_ambiguous_match_returns_before_the_card_click():
