@@ -13,7 +13,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
-from own_chrome.cdp import evaluate
+from own_chrome.cdp import ChromeError, evaluate
 
 from linkedin_mcp import messaging
 from linkedin_mcp.agent_config import Config
@@ -57,7 +57,12 @@ def find_referral_candidates(
     mentioned yet, and nothing is excluded. Requires the linkedin.com tab
     and messaging open."""
     cdp_port = port if port is not None else config.cdp_port
-    messaging.ensure_messaging(cdp_port)
+    opened = messaging.ensure_messaging(cdp_port)
+    # "already" on a messaging tab omits ready; a navigate that never
+    # painted the thread list sets ready False and must not be scraped.
+    # Mocks and older callers may return a non-dict; only a dict can say so.
+    if isinstance(opened, dict) and not opened.get("ready", True):
+        raise ChromeError(f"messaging tab not ready ({opened})")
     _load_full_thread_list(cdp_port, scroll_rounds, sleep_seconds)
 
     threads = messaging.list_threads(cdp_port, kind="threads", limit=thread_limit, no_navigate=True).get("threads", [])

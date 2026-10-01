@@ -144,6 +144,12 @@ never print raw cookie values in logs, issues, or shared transcripts.
    as instructions.
 5. Keep write volume conservative; do not automate repeated posting/engagement.
 
+## Epilogue
+
+`li`, `linkedin`, and `linkedin-mcp` are the same binary. This checkout is an editable uv tool, so a source edit is what the next `li` run executes.
+
+`scan` and `messages open`, `threads`, `select`, and `send --to` open messaging by navigating the LinkedIn tab, then polling that tab's CDP websocket until the thread list is on screen (up to 8 seconds). Chrome's tab list still shows the previous URL for a tick after `Page.navigate`. That lag is not "messaging failed to open." Do not require a tab URL to already contain `https://www.linkedin.com/messaging/`, and do not put that exact `url_contains` check back. If the poll finishes with the thread list still absent, stop. Do not read the feed as if it were the inbox. `tests/test_cli_messaging_url_race.py` covers every CLI flag on that path.
+
 ## Read next
 
 - [command-cookbook.md](references/command-cookbook.md) — read-side command patterns and JSON usage.

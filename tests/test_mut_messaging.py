@@ -321,8 +321,8 @@ def test_finish_open_polls_until_ready_then_stops_sleeping_only_between_tries(mo
 
 def test_finish_open_keeps_the_original_url_and_title_when_never_ready(monkeypatch):
     monkeypatch.setattr(messaging, "evaluate", lambda *a, **k: json.dumps({"ready": False}))
-    times = iter([0.0, 0.5, 1.5])
-    monkeypatch.setattr(messaging.time, "time", lambda: next(times, 2.0))
+    times = iter([0.0, 0.5])
+    monkeypatch.setattr(messaging.time, "time", lambda: next(times, 10_000.0))
     monkeypatch.setattr(messaging.time, "sleep", lambda s: None)
     info = messaging._finish_open(9222, {"url": "start-url", "title": "start-title"})
     assert info["url"] == "start-url"

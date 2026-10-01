@@ -56,6 +56,15 @@ what it was before a change.
   CLI-level), Hypothesis property tests (`test_properties.py`), and an
   edge-string table (`test_edge_strings.py`: empty/unicode/emoji/injection-
   shaped/very-long input) run against every text-accepting pure function.
+- `tests/test_cli_help.py` — `-h` and `--help` on the root, each command group, and a leaf command. `--json` / `-j` shows up on `messages read -h`.
+- `tests/test_cli_messaging_url_race.py` — every CLI command and flag that
+  opens messaging (`scan`, `messages open|threads|select|read|popups|send
+  --to`, including `--json`, `--unread`, `--limit`, `--filter`,
+  `--no-navigate`). Chrome's tab list still showing the feed URL after
+  `Page.navigate` must not raise `No open tab URL contains
+  'https://www.linkedin.com/messaging/'`. The readiness poll is on the
+  navigated tab's websocket; `scan` stops if that poll never sees the
+  thread list.
 - `client.py`, `transport.py`, `auth.py`, `browser.py`, `formatter.py`,
   `serialization.py`, `models.py`, `voyager_config.py` — unchanged from
   frizynn/linkedin-cli aside from the import path; their existing coverage

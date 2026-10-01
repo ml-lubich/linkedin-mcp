@@ -25,11 +25,26 @@ from .serialization import posts_to_json, profile_to_dict, search_results_to_jso
 console = Console(stderr=True)
 REACTION_CHOICES = ["like", "celebrate", "support", "love", "insightful", "curious"]
 
-app = typer.Typer(name="linkedin", help="linkedin - LinkedIn CLI + MCP server.", add_completion=False)
-auth_app = typer.Typer(help="Manage the LinkedIn session cookie.", no_args_is_help=True)
-post_cdp_app = typer.Typer(help="Draft or publish a feed post over your own logged-in Chrome (CDP).", no_args_is_help=True)
-messages_app = typer.Typer(help="Read or send a LinkedIn message in the open thread (CDP).", no_args_is_help=True)
-referral_app = typer.Typer(help="Draft or send a referral message (CDP).", no_args_is_help=True)
+_HELP = {"help_option_names": ["-h", "--help"]}
+
+app = typer.Typer(
+    name="linkedin",
+    help="linkedin - LinkedIn CLI + MCP server.",
+    add_completion=False,
+    context_settings=_HELP,
+)
+auth_app = typer.Typer(help="Manage the LinkedIn session cookie.", no_args_is_help=True, context_settings=_HELP)
+post_cdp_app = typer.Typer(
+    help="Draft or publish a feed post over your own logged-in Chrome (CDP).",
+    no_args_is_help=True,
+    context_settings=_HELP,
+)
+messages_app = typer.Typer(
+    help="Read or send a LinkedIn message in the open thread (CDP).",
+    no_args_is_help=True,
+    context_settings=_HELP,
+)
+referral_app = typer.Typer(help="Draft or send a referral message (CDP).", no_args_is_help=True, context_settings=_HELP)
 app.add_typer(auth_app, name="auth")
 app.add_typer(post_cdp_app, name="post-cdp")
 app.add_typer(messages_app, name="messages")
@@ -75,6 +90,17 @@ def _write_output(output_file: Optional[str], payload: str) -> None:
 def _handle_error(exc: Exception) -> None:
     console.print(build_status_panel("linkedin", False, str(exc)))
     raise typer.Exit(1)
+
+
+def _call(fn):
+    """Run a core call. typer.Exit is a control-flow signal (filter miss,
+    ambiguous select) and must not be rewritten as a generic failure."""
+    try:
+        return fn()
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        _handle_error(exc)
 
 
 # ---- read-only Voyager commands -----------------------------------------
@@ -141,7 +167,7 @@ def auth_status_cmd(ctx: typer.Context) -> None:
 def auth_capture_cmd(
     port: int = typer.Option(9333, "--port", help="Chrome CDP port to poll."),
     timeout: float = typer.Option(600.0, "--timeout", help="Seconds to wait for a login."),
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
+    as_json: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout."),
 ) -> None:
     """Poll a CDP-attached Chrome until logged in, then save the session cookie. Never prints cookie values."""
     result = core.auth_capture(port=port, timeout=timeout)
@@ -166,7 +192,7 @@ def auth_env_cmd() -> None:
 def feed(
     ctx: typer.Context,
     max_count: Optional[int] = typer.Option(None, "--max", help="Maximum number of feed items to fetch."),
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
+    as_json: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout."),
     output_file: Optional[str] = typer.Option(None, "--output", "-o", help="Write JSON output to a file."),
 ) -> None:
     """Fetch the authenticated home feed."""
@@ -188,7 +214,7 @@ def search(
     ctx: typer.Context,
     query: str,
     max_count: Optional[int] = typer.Option(None, "--max", help="Maximum number of search results to fetch."),
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
+    as_json: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout."),
     output_file: Optional[str] = typer.Option(None, "--output", "-o", help="Write JSON output to a file."),
 ) -> None:
     """Search LinkedIn entities and posts."""
@@ -209,7 +235,7 @@ def search(
 def profile(
     ctx: typer.Context,
     identifier: str,
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
+    as_json: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout."),
 ) -> None:
     """Fetch a LinkedIn profile by public id or URL."""
     try:
@@ -228,7 +254,7 @@ def profile_posts(
     ctx: typer.Context,
     identifier: str,
     max_count: Optional[int] = typer.Option(None, "--max", help="Maximum number of posts to fetch."),
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
+    as_json: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout."),
     output_file: Optional[str] = typer.Option(None, "--output", "-o", help="Write JSON output to a file."),
 ) -> None:
     """Fetch posts for a LinkedIn profile."""
@@ -249,7 +275,7 @@ def profile_posts(
 def activity(
     ctx: typer.Context,
     identifier: str,
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
+    as_json: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout."),
 ) -> None:
     """Fetch a LinkedIn activity detail."""
     try:
@@ -368,7 +394,7 @@ def comment(
 @app.command()
 def doctor(
     ctx: typer.Context,
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
+    as_json: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout."),
 ) -> None:
     """Check own-chrome, Chrome's CDP port, LinkedIn login, and referral config."""
     report = core.doctor(config_path=_config_path(ctx))
@@ -384,10 +410,10 @@ def doctor(
 @app.command()
 def scan(
     ctx: typer.Context,
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
+    as_json: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout."),
 ) -> None:
     """Find threads that still need a reply/referral."""
-    candidates = core.scan(config_path=_config_path(ctx))
+    candidates = _call(lambda: core.scan(config_path=_config_path(ctx)))
     if as_json:
         typer.echo(to_json(candidates))
         return
@@ -402,7 +428,7 @@ def classify(
     text: str,
     name: str = typer.Option("", "--name"),
     headline: str = typer.Option("", "--headline"),
-    as_json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
+    as_json: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout."),
 ) -> None:
     """Classify a message: hiring? excluded? already referred?"""
     result = core.classify_message(text, name=name, headline=headline, config_path=_config_path(ctx))
@@ -414,7 +440,7 @@ def classify(
 
 
 @post_cdp_app.command("draft")
-def post_cdp_draft_cmd(text: str, as_json: bool = typer.Option(False, "--json")) -> None:
+def post_cdp_draft_cmd(text: str, as_json: bool = typer.Option(False, "--json", "-j")) -> None:
     """Lint post text against the anti-cringe rules. Never touches the browser."""
     result = core.post_cdp_draft(text)
     if as_json:
@@ -430,7 +456,7 @@ def post_cdp_publish_cmd(
     text: str,
     image: Optional[str] = typer.Option(None, "--image"),
     confirm: bool = typer.Option(False, "--confirm", help="Actually click Post. Without this, nothing is published."),
-    as_json: bool = typer.Option(False, "--json"),
+    as_json: bool = typer.Option(False, "--json", "-j"),
 ) -> None:
     """Fill the composer and, only with --confirm, publish (own logged-in Chrome via CDP)."""
     try:
@@ -445,9 +471,9 @@ def post_cdp_publish_cmd(
 
 
 @messages_app.command("open")
-def messages_open_cmd(ctx: typer.Context, as_json: bool = typer.Option(False, "--json")) -> None:
+def messages_open_cmd(ctx: typer.Context, as_json: bool = typer.Option(False, "--json", "-j")) -> None:
     """Open LinkedIn messaging in the attached Chrome. Creates a tab if needed."""
-    info = core.messages_open(config_path=_config_path(ctx))
+    info = _call(lambda: core.messages_open(config_path=_config_path(ctx)))
     if as_json:
         typer.echo(to_json(info))
         return
@@ -461,10 +487,10 @@ def messages_threads_cmd(
     limit: int = typer.Option(20, "--limit"),
     unread: bool = typer.Option(False, "--unread", help="Only unread threads."),
     no_navigate: bool = typer.Option(False, "--no-navigate", help="Read the current tab; do not open messaging."),
-    as_json: bool = typer.Option(False, "--json"),
+    as_json: bool = typer.Option(False, "--json", "-j"),
 ) -> None:
     """List messaging threads."""
-    data = core.messages_threads(needle=filter_, limit=limit, unread=unread, no_navigate=no_navigate, config_path=_config_path(ctx))
+    data = _call(lambda: core.messages_threads(needle=filter_, limit=limit, unread=unread, no_navigate=no_navigate, config_path=_config_path(ctx)))
     if as_json:
         typer.echo(to_json(data))
         return
@@ -479,10 +505,10 @@ def messages_threads_cmd(
 def messages_select_cmd(
     ctx: typer.Context,
     name: str = typer.Argument(help="Thread name, or a unique piece of it."),
-    as_json: bool = typer.Option(False, "--json"),
+    as_json: bool = typer.Option(False, "--json", "-j"),
 ) -> None:
     """Open the one thread whose name contains NAME. Exits 2 if none match, 3 if several match."""
-    result = core.messages_select(name, config_path=_config_path(ctx))
+    result = _call(lambda: core.messages_select(name, config_path=_config_path(ctx)))
     if as_json:
         typer.echo(to_json(result))
     else:
@@ -498,10 +524,10 @@ def messages_read_cmd(
     ctx: typer.Context,
     url: str = typer.Option("", "--url"),
     limit: int = typer.Option(40, "--limit"),
-    as_json: bool = typer.Option(False, "--json"),
+    as_json: bool = typer.Option(False, "--json", "-j"),
 ) -> None:
     """Read the open thread (or one you name with --url)."""
-    data = core.messages_read(url=url, limit=limit, config_path=_config_path(ctx))
+    data = _call(lambda: core.messages_read(url=url, limit=limit, config_path=_config_path(ctx)))
     if as_json:
         typer.echo(to_json(data))
         return
@@ -518,7 +544,7 @@ def messages_send_cmd(
     attach_name: Optional[str] = typer.Option(None, "--attach-name"),
     target: str = typer.Option("", "--target", help="Recipient/thread identity for pacing (governor)."),
     confirm: bool = typer.Option(False, "--confirm", help="Actually click Send. Without this, nothing is sent."),
-    as_json: bool = typer.Option(False, "--json"),
+    as_json: bool = typer.Option(False, "--json", "-j"),
 ) -> None:
     """Select a thread by --to (if given) and type TEXT. Sends only with --confirm."""
     try:
@@ -536,10 +562,10 @@ def messages_send_cmd(
 def messages_popups_cmd(
     ctx: typer.Context,
     apply: bool = typer.Option(False, "--apply", help="Click the configured button. Default policy declines."),
-    as_json: bool = typer.Option(False, "--json"),
+    as_json: bool = typer.Option(False, "--json", "-j"),
 ) -> None:
     """Report the open LinkedIn dialog. Without --apply, nothing is clicked."""
-    result = core.messages_popups(apply=apply, config_path=_config_path(ctx))
+    result = _call(lambda: core.messages_popups(apply=apply, config_path=_config_path(ctx)))
     if as_json:
         typer.echo(to_json(result))
         return
@@ -551,10 +577,10 @@ def messages_workflow_cmd(
     ctx: typer.Context,
     spec: str = typer.Argument(help="Path to the workflow JSON."),
     text: str = typer.Option("", "--text", help="Thread text. Default is the open thread."),
-    as_json: bool = typer.Option(False, "--json"),
+    as_json: bool = typer.Option(False, "--json", "-j"),
 ) -> None:
     """Classify the open thread and draft a reply. Never sends -- sent is always false."""
-    result = core.messages_workflow(spec, text=text, config_path=_config_path(ctx))
+    result = _call(lambda: core.messages_workflow(spec, text=text, config_path=_config_path(ctx)))
     if as_json:
         typer.echo(to_json(result))
         raise typer.Exit(0 if result.get("go") or result.get("reason") == "regex miss" else 2)
@@ -563,7 +589,7 @@ def messages_workflow_cmd(
 
 
 @messages_app.command("commands")
-def messages_commands_cmd(as_json: bool = typer.Option(False, "--json")) -> None:
+def messages_commands_cmd(as_json: bool = typer.Option(False, "--json", "-j")) -> None:
     """List the `messages` agent verbs. No browser."""
     result = core.messages_commands()
     if as_json:
@@ -581,7 +607,7 @@ def referral_draft_cmd(
     headline: str = typer.Option("", "--headline"),
     reengage: bool = typer.Option(False, "--reengage"),
     stale_days: int = typer.Option(0, "--stale-days"),
-    as_json: bool = typer.Option(False, "--json"),
+    as_json: bool = typer.Option(False, "--json", "-j"),
 ) -> None:
     """Draft a referral message. Never touches the browser."""
     try:
@@ -606,7 +632,7 @@ def referral_send_cmd(
     text: str = typer.Option("", "--text"),
     stamp: str = typer.Option("", "--stamp"),
     confirm: bool = typer.Option(False, "--confirm", help="Actually click Send. Without this, nothing is sent."),
-    as_json: bool = typer.Option(False, "--json"),
+    as_json: bool = typer.Option(False, "--json", "-j"),
 ) -> None:
     """Draft and, only with --confirm, send a referral (text + resume)."""
     try:
@@ -627,7 +653,7 @@ def referral_send_cmd(
 def prompt_cmd(
     name: Optional[str] = typer.Argument(None, help="Name of prompt template (e.g. cold-outreach, triage-inbox, connection-invite)."),
     list_prompts: bool = typer.Option(False, "--list", "-l", help="List all available prompt templates."),
-    as_json: bool = typer.Option(False, "--json", help="Output instructions, schemas, few-shots, and template as JSON."),
+    as_json: bool = typer.Option(False, "--json", "-j", help="Output instructions, schemas, few-shots, and template as JSON."),
 ) -> None:
     """Inspect or output AI-native prompt templates, schemas, and few-shots."""
     try:

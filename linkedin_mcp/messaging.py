@@ -43,6 +43,9 @@ from linkedin_mcp.messages_actions import (
 
 TAB = "linkedin.com"
 MESSAGING = "https://www.linkedin.com/messaging/"
+# Page.navigate returns before Chrome's tab list shows the new URL, and the
+# thread list itself renders after that. Poll the navigated tab this long.
+_MESSAGING_READY_SECONDS = 8.0
 COMPOSE_SELECTOR = ".msg-form__contenteditable[contenteditable='true']"
 SEND_BUTTON_SELECTOR = "button.msg-form__send-button"
 FILE_INPUT_SELECTOR = "input[type='file']"
@@ -345,25 +348,38 @@ def ensure_messaging(port: int) -> dict:
     except ChromeError:
         opened = open_tab(port, MESSAGING)
         info = {"action": "open", "opened": "tab", "ok": True, "url": opened.get("url") or MESSAGING, "title": opened.get("title") or ""}
-        return _finish_open(port, info)
+        return _finish_open(port, info, ws_url=str(opened.get("webSocketDebuggerUrl") or ""))
     url = tab.get("url") or ""
     if url.rstrip("/").endswith("/messaging") or "/messaging/" in url:
         return {"action": "open", "opened": "already", "ok": True, "url": url, "title": tab.get("title") or ""}
     navigate(port, MESSAGING, host=TAB)
     info = {"action": "open", "opened": "navigated", "ok": True, "url": MESSAGING, "title": ""}
-    return _finish_open(port, info)
+    return _finish_open(port, info, ws_url=str(tab.get("webSocketDebuggerUrl") or ""))
 
 
-def _finish_open(port: int, info: dict) -> dict:
+def _finish_open(port: int, info: dict, ws_url: str = "") -> dict:
     """After opening/navigating to messaging, wait for the thread list to
     render before returning -- callers (list_threads/select_thread) need it
-    up before their own evaluate() calls. Evaluates against the tab we just
-    opened/navigated (by URL), not a fresh pages()/choose_linkedin_tab
-    lookup: the tab may not show up in a same-tick pages() call yet."""
-    deadline = time.time() + 1.0
+    up before their own evaluate() calls.
+
+    Poll the websocket of the tab we just opened or navigated. Chrome's
+    /json tab list still shows the previous URL for a tick after
+    Page.navigate, so requiring url_contains=the messaging URL raises
+    "No open tab URL contains ..." before the page has a chance to load.
+    When that websocket is unknown, fall back to a URL lookup and retry
+    the same miss until the deadline."""
+    deadline = time.time() + _MESSAGING_READY_SECONDS
     last_ready: dict = {}
+    expr = "(" + _READY_JS + ")()"
     while time.time() < deadline:
-        raw = evaluate(port, "(" + _READY_JS + ")()", url_contains=info["url"])
+        try:
+            if ws_url:
+                raw = evaluate_pinned(ws_url, expr)
+            else:
+                raw = evaluate(port, expr, url_contains=info["url"])
+        except ChromeError:
+            time.sleep(0.1)
+            continue
         last_ready = _as_dict(raw)
         if last_ready.get("ready"):
             break

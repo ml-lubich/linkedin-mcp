@@ -81,7 +81,11 @@ def test_ensure_messaging_navigates_off_a_feed_tab(monkeypatch):
     calls = []
     monkeypatch.setattr(messaging, "pages", lambda port: [_FEED_TAB])
     monkeypatch.setattr(messaging, "navigate", lambda port, url, **kw: calls.append(url))
-    monkeypatch.setattr(messaging, "evaluate", lambda port, expr, **kw: json.dumps({"ready": True, "url": messaging.MESSAGING, "title": "Messaging"}))
+    monkeypatch.setattr(
+        messaging,
+        "evaluate_pinned",
+        lambda ws_url, expr: json.dumps({"ready": True, "url": messaging.MESSAGING, "title": "Messaging"}),
+    )
     info = messaging.ensure_messaging(9222)
     assert calls == [messaging.MESSAGING]
     assert info["opened"] == "navigated"
