@@ -236,7 +236,14 @@ ACT_JS = r"""async (opts) => {
   }
   const card = matches[0].el;
   const link = card.querySelector("a");
-  (link || card).click();
+  const target = link || card.querySelector(".msg-conversation-card__message-snippet") || card;
+  try {
+    target.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, cancelable: true, view: window}));
+    target.dispatchEvent(new MouseEvent("mouseup", {bubbles: true, cancelable: true, view: window}));
+    target.click();
+  } catch (e) {
+    (link || card).click();
+  }
   const deadline = Date.now() + 8000;
   let box = null;
   while (Date.now() < deadline) {

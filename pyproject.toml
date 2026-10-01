@@ -56,6 +56,7 @@ Changelog = "https://github.com/ml-lubich/linkedin-mcp/blob/main/CHANGELOG.md"
 Security = "https://github.com/ml-lubich/linkedin-mcp/security"
 
 [project.scripts]
+li = "linkedin_mcp.cli:app"
 linkedin = "linkedin_mcp.cli:app"
 linkedin-mcp = "linkedin_mcp.cli:app"
 
