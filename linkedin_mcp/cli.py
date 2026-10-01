@@ -623,12 +623,49 @@ def referral_send_cmd(
     console.print(build_status_panel("Referral sent", bool((result["proof"] or {}).get("sent")), result["draft"]))
 
 
+@app.command("prompt")
+def prompt_cmd(
+    name: Optional[str] = typer.Argument(None, help="Name of prompt template (e.g. cold-outreach, triage-inbox, connection-invite)."),
+    list_prompts: bool = typer.Option(False, "--list", "-l", help="List all available prompt templates."),
+    as_json: bool = typer.Option(False, "--json", help="Output instructions, schemas, few-shots, and template as JSON."),
+) -> None:
+    """Inspect or output AI-native prompt templates, schemas, and few-shots."""
+    try:
+        if list_prompts or not name:
+            prompts = core.prompt_list()
+            if as_json:
+                typer.echo(to_json({"prompts": prompts}))
+            else:
+                for p in prompts:
+                    typer.echo(p)
+            raise typer.Exit(0)
+
+        prompt_data = core.prompt_get(name)
+        if as_json:
+            typer.echo(to_json(prompt_data))
+        else:
+            console.print(f"[bold green]Prompt:[/bold green] {prompt_data['name']}")
+            console.print(f"[bold cyan]Description:[/bold cyan] {prompt_data['description']}")
+            if prompt_data.get("instructions"):
+                console.print(f"\n[bold yellow]Instructions:[/bold yellow]\n{prompt_data['instructions']}")
+            if prompt_data.get("template"):
+                console.print(f"\n[bold magenta]Template:[/bold magenta]\n{prompt_data['template']}")
+    except typer.Exit:
+        raise
+    except FileNotFoundError as exc:
+        _handle_error(exc)
+    except Exception as exc:
+        _handle_error(exc)
+
+
+
 @app.command()
 def serve() -> None:
     """Run the MCP server over stdio (for Claude/Cursor: {"command": "linkedin-mcp", "args": ["serve"]})."""
     from . import mcp_server
 
     mcp_server.main()
+
 
 
 def main() -> None:

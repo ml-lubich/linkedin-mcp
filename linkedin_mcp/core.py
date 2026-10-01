@@ -328,3 +328,21 @@ def auth_capture(port: int = auth_capture_mod.DEFAULT_PORT, timeout: float = 600
 
 def auth_env() -> str:
     return auth_capture_mod.env_line()
+
+
+# ---- Prompts reflection & retrieval -------------------------------------
+
+
+def prompt_list(prompts_dir: Optional[str] = None) -> list[str]:
+    from . import prompt_manager
+
+    pdir = Path(prompts_dir) if prompts_dir else None
+    return prompt_manager.list_prompts(pdir)
+
+
+def prompt_get(name: str, prompts_dir: Optional[str] = None) -> dict:
+    from . import prompt_manager
+
+    pdir = Path(prompts_dir) if prompts_dir else None
+    return prompt_manager.get_prompt(name, pdir).to_dict()
+
