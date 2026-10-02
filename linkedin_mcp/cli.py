@@ -649,6 +649,45 @@ def referral_send_cmd(
     console.print(build_status_panel("Referral sent", bool((result["proof"] or {}).get("sent")), result["draft"]))
 
 
+@app.command("login")
+def login_cmd(
+    ctx: typer.Context,
+    account: Optional[str] = typer.Option(None, "--account", "-a", help="Sign-in email (Keychain account). Default michaelle.lubich@gmail.com."),
+    port: Optional[int] = typer.Option(None, "--port", "-p", help="CDP port (default from config, 9222)."),
+    as_json: bool = typer.Option(False, "--json", "-j"),
+) -> None:
+    """Sign the LinkedIn Chrome in using the Keychain password. One attempt; stops on captcha/2FA/checkpoint."""
+    result = _call(lambda: core.login(account=account, port=port, config_path=_config_path(ctx)))
+    if as_json:
+        typer.echo(to_json(result))
+        return
+    console.print(build_status_panel("LinkedIn login", True, f"{result['status']} ({result['account']})"))
+
+
+@referral_app.command("queue")
+def referral_queue_cmd(
+    ctx: typer.Context,
+    queue_file: str = typer.Argument(..., help="JSON list of {name, profile_url|thread_url, company, role, body}."),
+    confirm: bool = typer.Option(False, "--confirm", help="Actually send. Without this, only a dry-run plan is printed."),
+    limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Stop after N sends (or N planned, in a dry run)."),
+    port: Optional[int] = typer.Option(None, "--port", "-p", help="CDP port (default from config, 9222)."),
+    as_json: bool = typer.Option(False, "--json", "-j"),
+) -> None:
+    """Ledger-guarded bulk referrals: body then resume per person, verified, logged. Dry run unless --confirm."""
+    result = _call(
+        lambda: core.referral_queue(queue_file, confirm=confirm, limit=limit, port=port, config_path=_config_path(ctx))
+    )
+    if as_json:
+        typer.echo(to_json(result))
+    else:
+        typer.echo("DRY RUN (nothing sent; pass --confirm)" if result["dry_run"] else "SENT RUN")
+        for row in result["results"]:
+            typer.echo(f"{row['status']}\t{row['name']}\t{row['reason']}")
+        if result["aborted"]:
+            typer.echo(f"ABORTED: {result['aborted']}")
+    raise typer.Exit(2 if result["aborted"] else 0)
+
+
 @app.command("prompt")
 def prompt_cmd(
     name: Optional[str] = typer.Argument(None, help="Name of prompt template (e.g. cold-outreach, triage-inbox, connection-invite)."),

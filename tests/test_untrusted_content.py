@@ -53,6 +53,7 @@ EXEMPT = {
     "messages_popups": "LinkedIn's own fixed dialog chrome, not a stranger-authored message",
     "messages_commands": "a static catalog",
     "auth_capture": "capture status (count/path), never a cookie value",
+    "login": "sign-in status (status/account), no LinkedIn-authored content",
     "referral_draft": "our own algorithmically drafted text, not LinkedIn content echoed back",
 }
 
@@ -86,6 +87,7 @@ WRITE_TOOLS = [
     "post_cdp_publish",
     "messages_send",
     "referral_send",
+    "referral_queue",
 ]
 
 

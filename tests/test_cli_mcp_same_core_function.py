@@ -21,7 +21,7 @@ runner = CliRunner()
 # Commands with no MCP tool at all (test_mcp_parity.py's CLI_ONLY) or that
 # genuinely take no config_path (test_cli_config_passthrough.py's
 # NO_CONFIG_NEEDED) -- neither belongs in this same-core-function check.
-NOT_APPLICABLE = {"serve", "auth_env", "auth_capture", "post_cdp_draft", "messages_commands"}
+NOT_APPLICABLE = {"serve", "auth_env", "auth_capture", "post_cdp_draft", "messages_commands", "prompt"}
 
 
 def _run(coro):
@@ -57,6 +57,8 @@ CASES = [
     (["referral", "draft", "Jordan", "hi"], "referral_draft", {"name": "Jordan", "text": "hi"}, "referral_draft", {"draft": "hi", "problems": []}),
     (["referral", "send", "Jordan", "https://x", "--confirm"], "referral_send", {"name": "Jordan", "url": "https://x", "confirm": True}, "referral_send", {"name": "Jordan", "skipped": "", "draft": "hi", "proof": {"sent": True}}),
     (["scan"], "scan", {}, "scan", {}),
+    (["login"], "login", {}, "login", {"status": "signed_in", "account": "a"}),
+    (["referral", "queue", "q.json", "--confirm"], "referral_queue", {"queue_path": "q.json", "confirm": True}, "referral_queue", {"dry_run": False, "results": [], "aborted": ""}),
 ]
 
 

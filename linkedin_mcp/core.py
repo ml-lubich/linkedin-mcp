@@ -15,6 +15,7 @@ Two families of write action live here, gated two different ways:
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -22,6 +23,7 @@ from . import auth_capture as auth_capture_mod
 from . import classify as classify_mod
 from . import copywriter as copywriter_mod
 from . import doctor as doctor_mod
+from . import login as login_mod
 from . import messaging as messaging_mod
 from . import messages_actions as messages_actions_mod
 from . import post_cdp as post_cdp_mod
@@ -317,6 +319,32 @@ def referral_send(
         name=name, url=url, thread_text=text, config=config, confirm=confirm, stamp=stamp, port=port
     )
     return {"name": result.name, "skipped": result.skipped, "draft": result.draft, "proof": result.proof}
+
+
+def login(account: Optional[str] = None, port: Optional[int] = None, config_path: Optional[str] = None) -> dict:
+    config = _agent_config(config_path)
+    return login_mod.sign_in(port if port is not None else config.cdp_port, account)
+
+
+def referral_queue(
+    queue_path: str,
+    confirm: bool = False,
+    limit: Optional[int] = None,
+    port: Optional[int] = None,
+    config_path: Optional[str] = None,
+    ledger=None,
+) -> dict:
+    items = json.loads(Path(queue_path).expanduser().read_text())
+    rate = _voyager_config(config_path).rate_limit
+    return referral_mod.run_queue(
+        items,
+        _agent_config(config_path),
+        confirm=confirm,
+        limit=limit,
+        port=port,
+        ledger=ledger,
+        delay_range=(rate.write_delay_min, rate.write_delay_max),
+    )
 
 
 # ---- Session cookie capture (CDP) --------------------------------------

@@ -26,7 +26,7 @@ runner = CliRunner()
 # Commands that genuinely take no config_path -- auth capture/env are pure
 # CDP/file operations, post-cdp draft is pure text linting, messages commands
 # is a static catalog, serve starts the server itself.
-NO_CONFIG_NEEDED = {"auth_capture", "auth_env", "post_cdp_draft", "messages_commands", "serve"}
+NO_CONFIG_NEEDED = {"auth_capture", "auth_env", "post_cdp_draft", "messages_commands", "serve", "prompt"}
 
 CASES = [
     (["--config", "cfg.toml", "auth-status"], "auth_diagnostics"),
@@ -54,6 +54,8 @@ CASES = [
     (["--config", "cfg.toml", "messages", "workflow", "spec.json"], "messages_workflow"),
     (["--config", "cfg.toml", "referral", "draft", "Jordan", "hi"], "referral_draft"),
     (["--config", "cfg.toml", "referral", "send", "Jordan", "https://x", "--confirm"], "referral_send"),
+    (["--config", "cfg.toml", "login"], "login"),
+    (["--config", "cfg.toml", "referral", "queue", "q.json", "--confirm"], "referral_queue"),
 ]
 
 STUB_RESULTS = {
@@ -81,6 +83,8 @@ STUB_RESULTS = {
     "messages_popups": {"action": None, "applied": False},
     "messages_workflow": {"go": False, "reason": "regex miss", "sent": False},
     "referral_draft": {"draft": "hi", "problems": []},
+    "login": {"status": "signed_in", "account": "a"},
+    "referral_queue": {"dry_run": False, "results": [], "aborted": ""},
     "referral_send": {"name": "Jordan", "skipped": "", "draft": "hi", "proof": {"sent": True}},
 }
 
