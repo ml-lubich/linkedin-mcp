@@ -13,13 +13,16 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from types import ModuleType
+from typing import Protocol
 
 from linkedin_mcp.classify import already_referred
 from linkedin_mcp.agent_config import Config
 from linkedin_mcp.copywriter import draft_referral, stale_days_from
 from linkedin_mcp.governor import Governor, RateLimited, default_db_path
-from linkedin_mcp.cdp_session import evaluate_pinned
-from linkedin_mcp.messaging import TAB, evaluate, linkedin_tab, open_thread, read_thread, send_message
+from linkedin_mcp.cdp_session import JSON, evaluate_pinned
+from own_chrome.cdp import evaluate
+from linkedin_mcp.messaging import TAB, linkedin_tab, open_thread, read_thread, send_message
 
 
 @dataclass
@@ -27,7 +30,7 @@ class ReferralResult:
     name: str
     skipped: str = ""
     draft: str = ""
-    proof: dict | None = None
+    proof: JSON | None = None
 
 
 def send_referral_for_candidate(
@@ -113,7 +116,7 @@ def _excluded(*fields: str) -> str:
     return ""
 
 
-def validate_queue(items: object) -> list[dict]:
+def validate_queue(items: object) -> list[JSON]:
     if not isinstance(items, list):
         raise ValueError("queue must be a JSON list of {name, profile_url|thread_url, company, role, body}")
     for i, it in enumerate(items):
@@ -127,7 +130,7 @@ def validate_queue(items: object) -> list[dict]:
     return items
 
 
-def open_item(item: dict, port: int) -> None:
+def open_item(item: JSON, port: int) -> None:
     """Open the thread BY URL. A bare profile_url gets its Message button clicked."""
     open_thread(item.get("thread_url") or item["profile_url"], port)
     if not item.get("thread_url"):
@@ -137,9 +140,10 @@ def open_item(item: dict, port: int) -> None:
         time.sleep(2.0)
 
 
-def _snapshot(port: int) -> dict:
+def _snapshot(port: int) -> JSON:
     raw = evaluate_pinned(linkedin_tab(port)["webSocketDebuggerUrl"], _SNAPSHOT_JS)
-    return json.loads(raw) if isinstance(raw, str) else raw
+    snapshot: JSON = json.loads(raw) if isinstance(raw, str) else raw
+    return snapshot
 
 
 def _norm(text: str) -> str:
@@ -155,21 +159,29 @@ def _count_resume(text: str, config: Config) -> int:
     return sum(low.count(n) for n in _resume_names(config))
 
 
-def _ledger_module():
+class LedgerLike(Protocol):
+    """What run_queue needs from a ledger (the ledger module, or a test fake)."""
+
+    def contacted(self, entry: JSON) -> bool: ...
+
+    def append(self, entry: JSON) -> bool: ...
+
+
+def _ledger_module() -> ModuleType:
     from linkedin_mcp import ledger  # owned by another module; same load/contacted/append interface
 
     return ledger
 
 
 def run_queue(
-    items: list[dict],
+    items: list[JSON],
     config: Config,
     confirm: bool = False,
     limit: int | None = None,
     port: int | None = None,
-    ledger=None,
+    ledger: LedgerLike | None = None,
     delay_range: tuple[float, float] = (0.0, 0.0),
-) -> dict:
+) -> JSON:
     """Without confirm: a dry-run plan, no browser. With confirm, per item:
     skip excluded/ledgered, open the thread by URL, verify identity, skip if
     the email or resume is already there, send body then resume, re-read the
@@ -181,7 +193,7 @@ def run_queue(
     ledger = ledger or _ledger_module()
     cdp_port = port if port is not None else config.cdp_port
     email = config.referral.email.lower()
-    results: list[dict] = []
+    results: list[JSON] = []
     out = {"dry_run": not confirm, "results": results, "aborted": ""}
     planned = 0
 

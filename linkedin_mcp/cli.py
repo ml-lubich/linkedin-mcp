@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from typing import Optional
+from typing import TYPE_CHECKING, Callable, NoReturn, Optional, TypeVar
 
 import typer
 from rich.console import Console
@@ -17,6 +17,10 @@ from typer.core import TyperGroup
 from . import __version__, compact, core
 from . import scan as scan_mod
 from .serialization import profile_to_dict
+
+if TYPE_CHECKING:
+    # typer >=0.15 vendors click; TyperGroup.parse_args is typed against this Context, not typer.Context.
+    from typer._click.core import Context as _GroupContext
 
 console = Console(stderr=True)
 REACTION_CHOICES = ["like", "celebrate", "support", "love", "insightful", "curious"]
@@ -30,7 +34,7 @@ class _RootGroup(TyperGroup):
     """Accept --fields/--max-chars anywhere on the line (`li scan --fields name`),
     not only before the subcommand: hoist them to the root before parsing."""
 
-    def parse_args(self, ctx, args):
+    def parse_args(self, ctx: _GroupContext, args: list[str]) -> list[str]:
         hoisted: list[str] = []
         rest: list[str] = []
         it = iter(args)
@@ -109,7 +113,7 @@ def _write_output(output_file: Optional[str], payload: str) -> None:
         Path(output_file).write_text(payload + "\n", encoding="utf-8")
 
 
-def _emit(ctx: typer.Context, data, output_file: Optional[str] = None, **override) -> None:
+def _emit(ctx: typer.Context, data: object, output_file: Optional[str] = None, **override: int | None) -> None:
     """Print a read result as one line of compact JSON (the default for every
     read command; --json is accepted and changes nothing)."""
     opts = {**((ctx.obj or {}).get("shape") or {}), **{k: v for k, v in override.items() if v is not None}}
@@ -123,12 +127,15 @@ def _status(title: str, ok: bool, detail: str = "") -> None:
     typer.echo(f"{'ok' if ok else 'FAIL'}: {title}" + (f": {' '.join(str(detail).split())}" if detail else ""))
 
 
-def _handle_error(exc: Exception) -> None:
+def _handle_error(exc: Exception) -> NoReturn:
     typer.echo(compact.error_line(exc), err=True)
     raise typer.Exit(1)
 
 
-def _call(fn):
+_T = TypeVar("_T")
+
+
+def _call(fn: Callable[[], _T]) -> _T:
     """Run a core call. typer.Exit is a control-flow signal (filter miss,
     ambiguous select) and must not be rewritten as a generic failure."""
     try:

@@ -16,11 +16,14 @@ from __future__ import annotations
 import os
 import shlex
 import time
+from typing import Any
 from pathlib import Path
 
 from own_chrome.cdp import ChromeError, filter_pages, pages
 
 from linkedin_mcp.cdp_session import CdpSession
+
+JSON = dict[str, Any]  # JSON boundary: CDP cookies/report
 
 DEFAULT_PORT = 9333
 TAB = "linkedin.com"
@@ -33,7 +36,7 @@ class AuthCaptureError(RuntimeError):
     """Raised when session capture/read fails."""
 
 
-def _fetch_cookies(port: int) -> list[dict]:
+def _fetch_cookies(port: int) -> list[JSON]:
     if not filter_pages(pages(port), TAB, 5):
         raise ChromeError(f"no linkedin.com tab open on CDP port {port}")
     with CdpSession(port, host=TAB) as session:
@@ -41,7 +44,7 @@ def _fetch_cookies(port: int) -> list[dict]:
     return list(result.get("cookies") or [])
 
 
-def capture(port: int = DEFAULT_PORT, timeout_seconds: float = 600.0, poll_seconds: float = 3.0) -> dict:
+def capture(port: int = DEFAULT_PORT, timeout_seconds: float = 600.0, poll_seconds: float = 3.0) -> JSON:
     """Poll a CDP-attached Chrome until the user is logged in to LinkedIn,
     then persist the cookie header. Returns a report dict; never returns
     cookie values."""

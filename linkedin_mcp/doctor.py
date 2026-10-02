@@ -10,12 +10,13 @@ import shutil
 from own_chrome.cdp import ChromeError, describe, filter_pages, pages
 
 from linkedin_mcp.agent_config import Config
+from linkedin_mcp.cdp_session import JSON
 
 TAB = "linkedin.com"
 
 
-def check(config: Config) -> dict:
-    report: dict = {"port": config.cdp_port, "checks": []}
+def check(config: Config) -> JSON:
+    report: JSON = {"port": config.cdp_port, "checks": []}
 
     def add(name: str, ok: bool, detail: str = "") -> None:
         report["checks"].append({"name": name, "ok": ok, "detail": detail})

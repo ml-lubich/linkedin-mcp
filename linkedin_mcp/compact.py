@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from linkedin_mcp.cdp_session import JSON
+
 from .serialization import to_dict
 
 ELLIPSIS = "…"
@@ -26,7 +28,7 @@ def parse_fields(fields: str | None) -> list[str]:
     return [f.strip() for f in (fields or "").split(",") if f.strip()]
 
 
-def _rows(rows: list, fields: list[str], limit: int | None) -> tuple[list, int]:
+def _rows(rows: list[Any], fields: list[str], limit: int | None) -> tuple[list[Any], int]:
     total = len(rows)
     rows = rows[:limit] if limit and limit > 0 else rows
     if fields:
@@ -50,7 +52,7 @@ def shape(data: Any, fields: list[str] | None = None, limit: int | None = None, 
             rows.append({"more": total - len(rows)})
         return trim(rows, max_chars)
     if isinstance(data, dict):
-        out: dict = {}
+        out: JSON = {}
         counted = False
         for key, val in data.items():
             if isinstance(val, list):

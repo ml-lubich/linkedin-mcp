@@ -28,7 +28,9 @@ def _drop_none(value: Any) -> Any:
 
 def to_dict(value: Any) -> Any:
     """Convert dataclasses and containers into JSON-safe structures."""
-    if is_dataclass(value):
+    # Not narrowed inline: is_dataclass() also admits dataclass *types*, which asdict rejects.
+    is_instance = is_dataclass(value)
+    if is_instance:
         return _drop_none(asdict(value))
     if isinstance(value, list):
         return [to_dict(item) for item in value]
@@ -51,22 +53,26 @@ def write_json(path: Union[str, Path], value: Any, *, indent: int = 2) -> None:
 
 def profile_to_dict(profile: Profile) -> Dict[str, Any]:
     """Serialize a profile."""
-    return to_dict(profile)
+    payload: Dict[str, Any] = to_dict(profile)
+    return payload
 
 
 def post_to_dict(post: Post) -> Dict[str, Any]:
     """Serialize a post."""
-    return to_dict(post)
+    payload: Dict[str, Any] = to_dict(post)
+    return payload
 
 
 def comment_to_dict(comment: Comment) -> Dict[str, Any]:
     """Serialize a comment."""
-    return to_dict(comment)
+    payload: Dict[str, Any] = to_dict(comment)
+    return payload
 
 
 def search_result_to_dict(result: SearchResult) -> Dict[str, Any]:
     """Serialize a search result."""
-    return to_dict(result)
+    payload: Dict[str, Any] = to_dict(result)
+    return payload
 
 
 def actor_from_dict(data: Dict[str, Any]) -> Actor:
@@ -146,16 +152,8 @@ def _load_many(raw: str, model_type: Type[ModelT]) -> List[ModelT]:
 
 def _convert_item(item: Dict[str, Any], model_type: Type[ModelT]) -> ModelT:
     """Dispatch model conversion for a single dictionary."""
-    if model_type is Post:
-        return Post.from_dict(item)  # type: ignore[return-value]
-    if model_type is Profile:
-        return Profile.from_dict(item)  # type: ignore[return-value]
-    if model_type is Comment:
-        return Comment.from_dict(item)  # type: ignore[return-value]
-    if model_type is SearchResult:
-        return SearchResult.from_dict(item)  # type: ignore[return-value]
-    if model_type is Actor:
-        return Actor.from_dict(item)  # type: ignore[return-value]
+    if model_type in (Post, Profile, Comment, SearchResult, Actor):
+        return model_type.from_dict(item)
     raise TypeError("Unsupported model type: %s" % model_type)
 
 

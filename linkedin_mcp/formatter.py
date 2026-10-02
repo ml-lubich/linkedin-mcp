@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import Iterable, List, Optional
 
-from rich.console import Console, Group
+from rich.console import Console, Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from .models import Comment, Post, Profile, SearchResult
+from .models import Comment, Post, Profile, ReactionSummary, SearchResult
 
 
 def format_number(value: int) -> str:
@@ -21,7 +21,7 @@ def format_number(value: int) -> str:
     return str(value)
 
 
-def format_reaction_summary(summary) -> str:
+def format_reaction_summary(summary: ReactionSummary) -> str:
     """Render a compact reaction summary."""
     parts = []
     if summary.like:
@@ -157,7 +157,7 @@ def build_comment_table(comments: Iterable[Comment], title: Optional[str] = None
 
 def build_post_panel(post: Post, include_comments: bool = True) -> Panel:
     """Build a detailed panel for a single post."""
-    sections: List[object] = []
+    sections: List[RenderableType] = []
     title = post.author.name or post.author.public_id or "Unknown author"
     if post.author.public_id:
         title += " (@%s)" % post.author.public_id

@@ -95,4 +95,16 @@ only_mutate = [
 [dependency-groups]
 dev = [
     "mutmut>=3.8.0",
+    "mypy>=2.4.0",
+    "types-pyyaml>=6.0.12.20260906",
+    "types-requests>=2.33.0.20260906",
 ]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["linkedin_mcp"]
+
+[[tool.mypy.overrides]]
+module = ["browser_cookie3", "linkedin_api", "linkedin_api.*", "own_chrome", "own_chrome.*", "playwright.*"]
+ignore_missing_imports = true

@@ -13,11 +13,15 @@ import json
 import os
 import subprocess
 import time
+from collections.abc import Callable
+from typing import Any
 
 from own_chrome.cdp import ChromeError, open_tab, pages
 
 from linkedin_mcp.cdp_session import evaluate_pinned
 from linkedin_mcp.messages_actions import choose_linkedin_tab
+
+JSON = dict[str, Any]  # JSON boundary: CDP evaluate results
 
 DEFAULT_ACCOUNT = "michaelle.lubich@gmail.com"
 LOGIN_URL = "https://www.linkedin.com/login"
@@ -86,7 +90,7 @@ def get_password(account: str) -> str:
     return password
 
 
-def _detect(ws_url: str) -> dict:
+def _detect(ws_url: str) -> JSON:
     try:
         raw = evaluate_pinned(ws_url, DETECT_JS)
     except ChromeError:
@@ -101,7 +105,7 @@ def _run(ws_url: str, script: str, what: str) -> bool:
         raise LoginError(f"browser error while {what}") from None
 
 
-def _stop_if_blocked(info: dict) -> None:
+def _stop_if_blocked(info: JSON) -> None:
     state = info.get("state")
     if state == "captcha":
         raise LoginError("LinkedIn showed a captcha; solve it by hand, nothing was retried")
@@ -111,8 +115,8 @@ def _stop_if_blocked(info: dict) -> None:
         raise LoginError("LinkedIn showed a security checkpoint; clear it by hand, nothing was retried")
 
 
-def _wait(ws_url: str, done) -> dict:
-    info: dict = {}
+def _wait(ws_url: str, done: Callable[[JSON], bool]) -> JSON:
+    info: JSON = {}
     for _ in range(_POLL_ATTEMPTS):
         info = _detect(ws_url)
         _stop_if_blocked(info)
@@ -122,7 +126,7 @@ def _wait(ws_url: str, done) -> dict:
     return info
 
 
-def sign_in(port: int, account: str | None = None) -> dict:
+def sign_in(port: int, account: str | None = None) -> JSON:
     account = account or os.environ.get("LINKEDIN_AGENT_LOGIN_EMAIL") or DEFAULT_ACCOUNT
     tab = choose_linkedin_tab(pages(port)) or open_tab(port, LOGIN_URL)
     ws_url = str(tab.get("webSocketDebuggerUrl") or "")

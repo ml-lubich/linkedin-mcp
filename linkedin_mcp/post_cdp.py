@@ -11,7 +11,7 @@ import time
 
 from own_chrome.cdp import ChromeError, evaluate, navigate
 
-from linkedin_mcp.cdp_session import set_file_input
+from linkedin_mcp.cdp_session import JSON, set_file_input
 from linkedin_mcp.agent_config import Config
 from linkedin_mcp.governor import Governor, default_db_path
 from linkedin_mcp.messaging import SendNotConfirmedError, _validate_attachment_path
@@ -61,7 +61,7 @@ def publish_post(
     image_path: str | None = None,
     port: int | None = None,
     governor: Governor | None = None,
-) -> dict:
+) -> JSON:
     """Publishing is a bulk/loop-shaped risk (a script that posts repeatedly),
     so it is always paced and deduped through Governor -- target is a hash of
     the exact text, so posting the same content twice is refused even if the

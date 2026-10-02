@@ -17,7 +17,8 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Optional
+from types import ModuleType
+from typing import Any, Optional
 
 from . import auth_capture as auth_capture_mod
 from . import classify as classify_mod
@@ -39,6 +40,9 @@ from .models import Post, Profile, SearchResult
 from .voyager_config import AppConfig, load_config as load_voyager_config
 
 
+JSON = dict[str, Any]  # JSON boundary: tool results serialized to the CLI/MCP
+
+
 def _voyager_config(config_path: Optional[str] = None) -> AppConfig:
     return load_voyager_config(Path(config_path) if config_path else None)
 
@@ -54,11 +58,11 @@ def _agent_config(config_path: Optional[str] = None) -> AgentConfig:
 # ---- Voyager API surface (read-only) ----------------------------------
 
 
-def auth_status(config_path: Optional[str] = None) -> dict:
+def auth_status(config_path: Optional[str] = None) -> JSON:
     return _voyager_client(config_path).auth_status()
 
 
-def auth_diagnostics(config_path: Optional[str] = None) -> dict:
+def auth_diagnostics(config_path: Optional[str] = None) -> JSON:
     return collect_auth_diagnostics(_voyager_config(config_path))
 
 
@@ -124,15 +128,15 @@ def comment(identifier: str, text: str, confirm: bool = False, config_path: Opti
 # ---- CDP agent surface: drives the user's own logged-in Chrome ---------
 
 
-def doctor(config_path: Optional[str] = None) -> dict:
+def doctor(config_path: Optional[str] = None) -> JSON:
     return doctor_mod.check(_agent_config(config_path))
 
 
-def classify_message(text: str, name: str = "", headline: str = "", config_path: Optional[str] = None) -> dict:
+def classify_message(text: str, name: str = "", headline: str = "", config_path: Optional[str] = None) -> JSON:
     return classify_mod.classify(text, _agent_config(config_path), name=name, headline=headline)
 
 
-def post_cdp_draft(text: str) -> dict:
+def post_cdp_draft(text: str) -> JSON:
     """Lint post text against the anti-cringe rules. Never touches the browser."""
     return {"text": text, "problems": post_cdp_mod.lint_post(text)}
 
@@ -143,7 +147,7 @@ def post_cdp_publish(
     confirm: bool = False,
     port: Optional[int] = None,
     config_path: Optional[str] = None,
-) -> dict:
+) -> JSON:
     """Fill the composer and, only with confirm=True, publish (own logged-in
     Chrome via CDP). Without confirm, raises SendNotConfirmedError after
     filling the box -- the browser-side preview, not the CLI confirm gate."""
@@ -153,7 +157,7 @@ def post_cdp_publish(
 
 def messages_read(
     url: str = "", limit: int = 40, port: Optional[int] = None, config_path: Optional[str] = None
-) -> dict:
+) -> JSON:
     config = _agent_config(config_path)
     cdp_port = port if port is not None else config.cdp_port
     if url:
@@ -170,7 +174,7 @@ def messages_send(
     confirm: bool = False,
     port: Optional[int] = None,
     config_path: Optional[str] = None,
-) -> dict:
+) -> JSON:
     """Type `text` into the compose box and, only with confirm=True, send.
     With `to`, selects that thread by name first (absorbed from `li tell`);
     without it, types into whatever thread is already open (the original
@@ -232,19 +236,19 @@ def messages_threads(
     no_navigate: bool = False,
     port: Optional[int] = None,
     config_path: Optional[str] = None,
-) -> dict:
+) -> JSON:
     config = _agent_config(config_path)
     cdp_port = port if port is not None else config.cdp_port
     return messaging_mod.list_threads(cdp_port, kind="unread" if unread else "threads", needle=needle, limit=limit, no_navigate=no_navigate)
 
 
-def messages_select(name: str, port: Optional[int] = None, config_path: Optional[str] = None) -> dict:
+def messages_select(name: str, port: Optional[int] = None, config_path: Optional[str] = None) -> JSON:
     config = _agent_config(config_path)
     cdp_port = port if port is not None else config.cdp_port
     return messaging_mod.select_thread(cdp_port, name)
 
 
-def messages_open(port: Optional[int] = None, config_path: Optional[str] = None) -> dict:
+def messages_open(port: Optional[int] = None, config_path: Optional[str] = None) -> JSON:
     config = _agent_config(config_path)
     cdp_port = port if port is not None else config.cdp_port
     return messaging_mod.ensure_messaging(cdp_port)
@@ -252,25 +256,25 @@ def messages_open(port: Optional[int] = None, config_path: Optional[str] = None)
 
 def messages_popups(
     apply: bool = False, port: Optional[int] = None, config_path: Optional[str] = None
-) -> dict:
+) -> JSON:
     config = _agent_config(config_path)
     cdp_port = port if port is not None else config.cdp_port
     return messaging_mod.popups(cdp_port, apply=apply, policy=None)
 
 
-def messages_workflow(spec_path: str, text: str = "", port: Optional[int] = None, config_path: Optional[str] = None) -> dict:
+def messages_workflow(spec_path: str, text: str = "", port: Optional[int] = None, config_path: Optional[str] = None) -> JSON:
     """Classify the open thread (or `text`) and draft a reply. Never sends."""
     config = _agent_config(config_path)
     cdp_port = port if port is not None else config.cdp_port
     return messaging_mod.workflow_run(spec_path, text=text, port=cdp_port)
 
 
-def messages_commands() -> dict:
+def messages_commands() -> JSON:
     """List the `messages` agent verbs. No browser."""
     return {"commands": [dict(row) for row in messages_actions_mod.COMMANDS]}
 
 
-def scan(port: Optional[int] = None, config_path: Optional[str] = None) -> dict:
+def scan(port: Optional[int] = None, config_path: Optional[str] = None) -> JSON:
     """Find threads that still need a reply/referral. Converts each
     Candidate to a plain dict here, once, so the CLI and the MCP tool can
     just emit the result instead of each doing their own asdict()."""
@@ -288,7 +292,7 @@ def referral_draft(
     reengage: bool = False,
     stale_days: int = 0,
     config_path: Optional[str] = None,
-) -> dict:
+) -> JSON:
     config = _agent_config(config_path)
     if not config.referral.enabled:
         raise RuntimeError("referral is disabled in config; set referral.enabled = true")
@@ -306,7 +310,7 @@ def referral_send(
     confirm: bool = False,
     port: Optional[int] = None,
     config_path: Optional[str] = None,
-) -> dict:
+) -> JSON:
     config = _agent_config(config_path)
     result = referral_mod.send_referral_for_candidate(
         name=name, url=url, thread_text=text, config=config, confirm=confirm, stamp=stamp, port=port
@@ -314,7 +318,7 @@ def referral_send(
     return {"name": result.name, "skipped": result.skipped, "draft": result.draft, "proof": result.proof}
 
 
-def login(account: Optional[str] = None, port: Optional[int] = None, config_path: Optional[str] = None) -> dict:
+def login(account: Optional[str] = None, port: Optional[int] = None, config_path: Optional[str] = None) -> JSON:
     config = _agent_config(config_path)
     return login_mod.sign_in(port if port is not None else config.cdp_port, account)
 
@@ -325,8 +329,8 @@ def referral_queue(
     limit: Optional[int] = None,
     port: Optional[int] = None,
     config_path: Optional[str] = None,
-    ledger=None,
-) -> dict:
+    ledger: ModuleType | None = None,
+) -> JSON:
     items = json.loads(Path(queue_path).expanduser().read_text())
     rate = _voyager_config(config_path).rate_limit
     return referral_mod.run_queue(
@@ -343,7 +347,7 @@ def referral_queue(
 # ---- Session cookie capture (CDP) --------------------------------------
 
 
-def auth_capture(port: int = auth_capture_mod.DEFAULT_PORT, timeout: float = 600.0) -> dict:
+def auth_capture(port: int = auth_capture_mod.DEFAULT_PORT, timeout: float = 600.0) -> JSON:
     return auth_capture_mod.capture(port=port, timeout_seconds=timeout)
 
 
@@ -361,7 +365,7 @@ def prompt_list(prompts_dir: Optional[str] = None) -> list[str]:
     return prompt_manager.list_prompts(pdir)
 
 
-def prompt_get(name: str, prompts_dir: Optional[str] = None) -> dict:
+def prompt_get(name: str, prompts_dir: Optional[str] = None) -> JSON:
     from . import prompt_manager
 
     pdir = Path(prompts_dir) if prompts_dir else None

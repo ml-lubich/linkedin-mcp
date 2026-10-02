@@ -30,7 +30,7 @@ from pathlib import Path
 from own_chrome.cdp import ChromeError, evaluate, host_matches, navigate, open_tab, pages
 
 from linkedin_mcp.agent_config import Config
-from linkedin_mcp.cdp_session import evaluate_pinned, set_file_input
+from linkedin_mcp.cdp_session import JSON, evaluate_pinned, set_file_input
 from linkedin_mcp.governor import Governor
 from linkedin_mcp.messages_actions import (
     act_expression,
@@ -63,7 +63,7 @@ class SendNotConfirmedError(RuntimeError):
     touching the DOM file input or the browser's Send button.
     """
 
-    def __init__(self, message: str, preview: dict | None = None) -> None:
+    def __init__(self, message: str, preview: JSON | None = None) -> None:
         super().__init__(message)
         self.preview = preview or {}
 
@@ -104,7 +104,7 @@ def open_thread(url: str, port: int) -> None:
     navigate(port, url, host=TAB)
 
 
-def read_thread(port: int, limit: int = 40) -> dict:
+def read_thread(port: int, limit: int = 40) -> JSON:
     raw = evaluate(
         port,
         "JSON.stringify({"
@@ -114,7 +114,7 @@ def read_thread(port: int, limit: int = 40) -> dict:
         f"}})",
         TAB,
     )
-    data = json.loads(raw) if isinstance(raw, str) else raw
+    data: JSON = json.loads(raw) if isinstance(raw, str) else raw
     limit = max(limit, 0)
     data["bodies"] = (data.get("bodies") or [])[-limit:] if limit else data.get("bodies") or []
     return data
@@ -193,7 +193,7 @@ def send_message(
     target: str = "",
     action: str = "message",
     dedupe_window_seconds: float | None = None,
-) -> dict:
+) -> JSON:
     """Fill the compose box (and optionally attach a file), then send only
     when confirm=True. Returns a proof dict describing what happened.
 
@@ -303,7 +303,7 @@ def send_message(
 # ---- tab selection / opening messaging ------------------------------------
 
 
-def linkedin_tab(port: int) -> dict:
+def linkedin_tab(port: int) -> JSON:
     """Resolve the ONE tab every step of a messaging operation (list, select,
     read, fill, attach, send, verify) must stay pinned to: choose_linkedin_tab's
     host-validated, messaging-preferring choice.
@@ -329,15 +329,16 @@ def _eval_on_linkedin_tab(port: int, expression: str) -> object:
     return evaluate_pinned(tab["webSocketDebuggerUrl"], expression)
 
 
-def _as_dict(raw: object) -> dict:
+def _as_dict(raw: object) -> JSON:
     if isinstance(raw, dict):
         return raw
     if not isinstance(raw, str):
         raise ChromeError("page did not return JSON")
-    return json.loads(raw)
+    parsed: JSON = json.loads(raw)
+    return parsed
 
 
-def ensure_messaging(port: int) -> dict:
+def ensure_messaging(port: int) -> JSON:
     """Open messaging in the attached Chrome. Does not start a browser.
 
     An existing messaging tab wins over a feed tab. The feed tab is only
@@ -357,7 +358,7 @@ def ensure_messaging(port: int) -> dict:
     return _finish_open(port, info, ws_url=str(tab.get("webSocketDebuggerUrl") or ""))
 
 
-def _finish_open(port: int, info: dict, ws_url: str = "") -> dict:
+def _finish_open(port: int, info: JSON, ws_url: str = "") -> JSON:
     """After opening/navigating to messaging, wait for the thread list to
     render before returning -- callers (list_threads/select_thread) need it
     up before their own evaluate() calls.
@@ -369,7 +370,7 @@ def _finish_open(port: int, info: dict, ws_url: str = "") -> dict:
     When that websocket is unknown, fall back to a URL lookup and retry
     the same miss until the deadline."""
     deadline = time.time() + _MESSAGING_READY_SECONDS
-    last_ready: dict = {}
+    last_ready: JSON = {}
     expr = "(" + _READY_JS + ")()"
     while time.time() < deadline:
         try:
@@ -402,7 +403,7 @@ _READY_JS = r"""(() => {
 # ---- thread listing / selection --------------------------------------------
 
 
-def list_threads(port: int, kind: str = "threads", needle: str = "", limit: int = 20, no_navigate: bool = False) -> dict:
+def list_threads(port: int, kind: str = "threads", needle: str = "", limit: int = 20, no_navigate: bool = False) -> JSON:
     """List threads (`kind="threads"`) or only unread ones (`kind="unread"`).
     Prefers an already-open messaging tab; navigates a lone feed tab there
     first unless no_navigate=True."""
@@ -419,7 +420,7 @@ def list_threads(port: int, kind: str = "threads", needle: str = "", limit: int 
     return payload
 
 
-def select_thread(port: int, name: str) -> dict:
+def select_thread(port: int, name: str) -> JSON:
     """Open the thread whose name matches `name`. Matching happens in Python
     (match_thread: exact-name preferred over substring, deduped by href, not
     display name) against a fresh thread listing, then the page clicks the
@@ -457,7 +458,7 @@ def select_thread(port: int, name: str) -> dict:
 # ---- dialog popups ----------------------------------------------------------
 
 
-def popups(port: int, apply: bool = False, policy: dict | None = None) -> dict:
+def popups(port: int, apply: bool = False, policy: JSON | None = None) -> JSON:
     """Report the open LinkedIn dialog; click the policy-chosen button only
     when apply=True. Default policy declines "share your contact info"."""
     policy = policy or {"share_contact": "decline"}
@@ -505,7 +506,7 @@ def api_key() -> str:
     return out.strip()
 
 
-def complete(model: str, messages: list[dict]) -> str:
+def complete(model: str, messages: list[JSON]) -> str:
     body = json.dumps({"model": model, "messages": messages}).encode()
     request = urllib.request.Request(
         "https://api.openai.com/v1/chat/completions",
@@ -519,10 +520,11 @@ def complete(model: str, messages: list[dict]) -> str:
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode(errors="replace")[:300]
         raise ChromeError(f"OpenAI {exc.code}: {detail}") from exc
-    return payload["choices"][0]["message"]["content"]
+    content: str = payload["choices"][0]["message"]["content"]
+    return content
 
 
-def workflow_run(spec_path: str, text: str = "", port: int | None = None) -> dict:
+def workflow_run(spec_path: str, text: str = "", port: int | None = None) -> JSON:
     """Classify the open thread (or explicit `text`) and draft a reply.
     Never sends -- `sent` is always False."""
     from linkedin_mcp.messages_actions import run_workflow

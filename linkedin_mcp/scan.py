@@ -13,11 +13,13 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import asdict, dataclass
+from typing import Protocol
 
 from own_chrome.cdp import ChromeError, evaluate
 
 from linkedin_mcp import ledger, messaging
 from linkedin_mcp.agent_config import Config
+from linkedin_mcp.cdp_session import JSON
 from linkedin_mcp.classify import already_referred, exclude_reason, joe_fit
 
 TAB = "linkedin.com"
@@ -37,7 +39,7 @@ class Candidate:
     text: str
 
 
-def to_json(candidates: dict[str, Candidate | dict]) -> str:
+def to_json(candidates: dict[str, Candidate | JSON]) -> str:
     """Compact JSON list for agents: one object per candidate plus a joe_fit
     verdict. Accepts Candidate objects or the plain dicts core.scan returns."""
     rows = []
@@ -68,6 +70,20 @@ def _load_full_thread_list(port: int, rounds: int, sleep_seconds: float) -> None
             time.sleep(sleep_seconds)
 
 
+class Reader(Protocol):
+    """The slice of the messaging module find_referral_candidates drives (injectable for tests)."""
+
+    def ensure_messaging(self, port: int) -> JSON: ...
+
+    def list_threads(
+        self, port: int, kind: str = ..., needle: str = ..., limit: int = ..., no_navigate: bool = ...
+    ) -> JSON: ...
+
+    def select_thread(self, port: int, name: str) -> JSON: ...
+
+    def read_thread(self, port: int, limit: int = ...) -> JSON: ...
+
+
 def find_referral_candidates(
     config: Config,
     port: int | None = None,
@@ -76,7 +92,7 @@ def find_referral_candidates(
     scroll_rounds: int = 15,
     sleep_seconds: float = 2.0,
     click_settle_seconds: float = 2.5,
-    reader=None,
+    reader: Reader | None = None,
 ) -> dict[str, Candidate]:
     """Load every thread, select each one whose preview isn't from us, and
     keep the ones where the last speaker isn't us, the referee isn't
@@ -108,7 +124,7 @@ def find_referral_candidates(
         # navigation. Verify by href before trusting the read, retrying a
         # few times instead of hoping a fixed sleep was long enough.
         href = selection.get("href") or ""
-        data: dict = {}
+        data: JSON = {}
         verified = not href
         for _attempt in range(5):
             data = messaging.read_thread(cdp_port, limit=read_limit)

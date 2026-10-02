@@ -23,8 +23,14 @@ No test is skipped or marked `xfail`; a red test means something is broken.
 ## Run
 
 ```bash
+uv run mypy linkedin_mcp
 uv run pytest -q --cov=linkedin_mcp --cov-report=term-missing
 ```
+
+`mypy --strict` (config in `pyproject.toml`) is part of the gate: it must exit 0,
+and `tests/test_typing_gate.py` fails the suite if it does not. The package ships
+`py.typed`. No `# type: ignore`; the only `Any` allowed is the narrow, commented
+JSON/CDP boundary alias.
 
 Run it three times before trusting a new/changed test — flakes hide in CDP
 timing code (`auth_capture.capture`'s poll loop, `messaging.send_message`'s

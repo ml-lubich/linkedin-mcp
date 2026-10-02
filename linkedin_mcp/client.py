@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Iterable, Optional
+from collections.abc import Callable
+from typing import Any, Iterable, Optional, TypeVar
 from urllib.parse import urlparse
 
 from requests import exceptions as requests_exceptions
@@ -14,11 +15,13 @@ from .auth import build_api_client
 from .auth import probe_read_access
 from .auth import resolve_auth_session
 from .auth import validate_auth_session
-from .browser import BrowserActionError, LinkedInBrowserFallback
+from .browser import BrowserActionError, BrowserActionResult, LinkedInBrowserFallback
 from .voyager_config import AppConfig
 from .models import Actor, Comment, EngagementMetrics, Post, Profile, ReactionSummary, SearchResult
 from .transport import LinkedInTransportError
 from .transport import LinkedInVoyagerTransport
+
+_T = TypeVar("_T")
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +196,7 @@ class LinkedInClient:
                     return f"urn:li:activity:{part}"
         raise LinkedInClientError(f"Unsupported LinkedIn activity identifier: {identifier}")
 
-    def _retry(self, operation: str, callback):
+    def _retry(self, operation: str, callback: Callable[[], _T]) -> _T:
         attempts = self.config.rate_limit.max_retries + 1
         last_error: Optional[Exception] = None
         for attempt in range(1, attempts + 1):
@@ -220,7 +223,7 @@ class LinkedInClient:
                 time.sleep(self.config.rate_limit.retry_base_delay * attempt)
         raise LinkedInClientError(f"{operation} failed: {last_error}") from last_error
 
-    def _browser_result(self, result) -> str:
+    def _browser_result(self, result: BrowserActionResult) -> str:
         if not result.success:
             raise LinkedInClientError(result.detail)
         return result.detail
@@ -450,14 +453,14 @@ class LinkedInClient:
                 continue
         return 0
 
-    def _extract_first(self, raw: Any, *paths: str):
+    def _extract_first(self, raw: Any, *paths: str) -> Any:
         for path in paths:
             value = self._extract_path(raw, path)
             if value not in (None, "", [], {}):
                 return value
         return None
 
-    def _extract_path(self, raw: Any, path: str):
+    def _extract_path(self, raw: Any, path: str) -> Any:  # JSON boundary: Voyager payload
         current = raw
         for part in path.split("."):
             if isinstance(current, dict):

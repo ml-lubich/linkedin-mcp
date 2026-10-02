@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from http.cookiejar import Cookie
 import os
 from typing import Any
-from typing import Iterable
+from typing import Callable, Iterable
 
 from linkedin_api import Linkedin
+from playwright._impl._api_structures import SetCookieParam
 from requests.cookies import create_cookie
 from requests.cookies import RequestsCookieJar
 
@@ -42,11 +44,11 @@ class AuthSession:
 
     @property
     def li_at(self) -> str:
-        return self.cookie_jar.get("li_at", "")
+        return self.cookie_jar.get("li_at", "") or ""
 
     @property
     def jsessionid(self) -> str:
-        return self.cookie_jar.get("JSESSIONID", "").strip('"')
+        return (self.cookie_jar.get("JSESSIONID", "") or "").strip('"')
 
     @property
     def cookie_string(self) -> str:
@@ -66,16 +68,16 @@ class AuthSession:
     def has_required_cookies(self) -> bool:
         return all(self.cookie_jar.get(name) for name in COOKIE_REQUIRED_NAMES)
 
-    def as_playwright_cookies(self) -> list[dict[str, object]]:
-        cookies = []
+    def as_playwright_cookies(self) -> list[SetCookieParam]:
+        cookies: list[SetCookieParam] = []
         for cookie in self.cookie_jar:
             cookies.append(
                 {
                     "name": cookie.name,
-                    "value": cookie.value,
+                    "value": cookie.value or "",
                     "domain": cookie.domain or ".linkedin.com",
                     "path": cookie.path or "/",
-                    "httpOnly": bool(cookie._rest.get("HttpOnly")),
+                    "httpOnly": bool(getattr(cookie, "_rest", {}).get("HttpOnly")),
                     "secure": bool(cookie.secure),
                     "sameSite": "Lax",
                 }
@@ -102,9 +104,9 @@ def resolve_auth_session(config: AppConfig) -> AuthSession:
     )
 
 
-def build_api_client(session: AuthSession, config: AppConfig):
+def build_api_client(session: AuthSession, config: AppConfig) -> Linkedin:
     """Create the unofficial LinkedIn Voyager client from resolved cookies."""
-    proxies = {}
+    proxies: dict[str, str] = {}
     if config.runtime.proxy:
         proxies = {
             "http": config.runtime.proxy,
@@ -397,9 +399,13 @@ def _session_from_cookie_jar(
     return None
 
 
-def _copy_cookie(target: RequestsCookieJar, cookie) -> None:
+# requests ships create_cookie untyped; bind it to a typed callable once.
+_create_cookie: Callable[..., Cookie] = create_cookie
+
+
+def _copy_cookie(target: RequestsCookieJar, cookie: Cookie) -> None:
     target.set_cookie(
-        create_cookie(
+        _create_cookie(
             name=cookie.name,
             value=cookie.value,
             domain=cookie.domain or ".linkedin.com",

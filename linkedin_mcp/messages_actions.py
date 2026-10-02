@@ -19,6 +19,8 @@ import unicodedata
 import urllib.parse
 from typing import Callable
 
+from linkedin_mcp.cdp_session import JSON
+
 # ---- command catalog (for `messages commands --json`) --------------------
 
 COMMANDS: tuple[dict[str, object], ...] = (
@@ -74,7 +76,7 @@ def _normalize_name(name: str) -> str:
     return re.sub(r"\s+", " ", normalized).strip()
 
 
-def match_thread(threads: list[dict], query: str) -> dict:
+def match_thread(threads: list[JSON], query: str) -> JSON:
     """Pick the thread whose name matches `query`, from a list of dicts each
     with at least "name" and "href". Dedupes candidates by href (a stable
     per-thread id) before matching -- never by display name, so two
@@ -89,8 +91,8 @@ def match_thread(threads: list[dict], query: str) -> dict:
     if not q:
         return {"ok": False, "ambiguous": False, "matched_name": "", "matched_href": "", "matches": []}
 
-    seen_hrefs: set[str] = set()
-    deduped: list[dict] = []
+    seen_hrefs: set[object] = set()
+    deduped: list[JSON] = []
     for thread in threads:
         href = thread.get("href") or ""
         key = href or id(thread)
@@ -99,7 +101,7 @@ def match_thread(threads: list[dict], query: str) -> dict:
         seen_hrefs.add(key)
         deduped.append(thread)
 
-    def _pick(candidates: list[dict]) -> dict:
+    def _pick(candidates: list[JSON]) -> JSON:
         if len(candidates) == 1:
             winner = candidates[0]
             return {
@@ -120,7 +122,7 @@ def match_thread(threads: list[dict], query: str) -> dict:
     return {"ok": False, "ambiguous": False, "matched_name": "", "matched_href": "", "matches": []}
 
 
-def choose_linkedin_tab(tabs: list[dict]) -> dict | None:
+def choose_linkedin_tab(tabs: list[JSON]) -> JSON | None:
     """Prefer an open messaging tab. A feed tab listed first must not win."""
     linkedin = [tab for tab in tabs if _linkedin_host(str(tab.get("url") or ""))]
     messaging = [tab for tab in linkedin if on_messaging(str(tab.get("url") or ""))]
@@ -282,7 +284,7 @@ DECLINE = "No, don't share"
 SHARE = "Yes, please share"
 
 
-def choose_popup_action(title: str, buttons: list[str], policy: dict) -> str | None:
+def choose_popup_action(title: str, buttons: list[str], policy: JSON) -> str | None:
     if SHARE_CONTACT not in title.lower():
         return None
     wanted = SHARE if policy.get("share_contact") == "share" else DECLINE
@@ -294,7 +296,7 @@ def choose_popup_action(title: str, buttons: list[str], policy: dict) -> str | N
 
 # ---- classify-then-draft intent routing --------------------------------------
 
-Complete = Callable[[str, list[dict]], str]
+Complete = Callable[[str, list[JSON]], str]
 
 
 def route(
@@ -305,7 +307,7 @@ def route(
     intent_prompt: str,
     write_prompt: str,
     complete: Complete,
-) -> dict:
+) -> JSON:
     if pattern and not re.search(pattern, text, re.IGNORECASE):
         return {"go": False, "route": "skip", "reason": "regex miss"}
     raw = complete(
@@ -336,7 +338,7 @@ def route(
     return {"go": True, "route": "write", "reason": reason, "draft": draft}
 
 
-def run_workflow(spec: dict, thread_text: str, complete: Complete) -> dict:
+def run_workflow(spec: JSON, thread_text: str, complete: Complete) -> JSON:
     """Classify + draft only -- there is no live-send mode; `sent` is
     always False. (A `dry_run` flag used to exist here and do nothing --
     removed rather than kept as a misleading no-op.)"""

@@ -10,6 +10,7 @@ import re
 
 from linkedin_mcp import ledger
 from linkedin_mcp.agent_config import Config
+from linkedin_mcp.cdp_session import JSON
 
 HIRING_RE = re.compile(
     r"\b(inmail|hiring|hire|role|engineer|position|recruit|founding|job|opening|consultant)\b",
@@ -50,14 +51,15 @@ def classify(
     headline: str = "",
     company: str = "",
     profile_url: str = "",
-) -> dict:
+) -> JSON:
     """Deterministic verdict: hiring / excluded / already_referred, plus a reason."""
     hiring = looks_like_hiring(message)
     blob = f"{name}\n{headline}\n{company}\n{message}"
     reason = ""
     is_excluded = ledger.excluded(blob)
     if is_excluded:
-        reason = f"excluded:{ledger.EXCLUDED.search(blob).group(0).lower()}"
+        match = ledger.EXCLUDED.search(blob)
+        reason = f"excluded:{match.group(0).lower()}" if match else "excluded"
     elif config and (cfg_reason := exclude_reason(name, headline, message, config)):
         is_excluded, reason = True, cfg_reason
     referred = bool(config and already_referred(message, config)) or ledger.contacted(
@@ -82,7 +84,7 @@ _FIT_RE = re.compile(
 )
 
 
-def joe_fit(role_text: str) -> dict:
+def joe_fit(role_text: str) -> JSON:
     """Honesty rule for referring Joe: never oversell a role he does not fit."""
     text = role_text or ""
     years = [int(m.group(1)) for m in _YEARS_RE.finditer(text)]

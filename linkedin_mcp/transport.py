@@ -152,7 +152,8 @@ class LinkedInTransport:
         raw_urns = payload.get("data", {}).get("*elements", [])
         posts = parse_list_raw_posts(raw_posts, API_BASE_URL)
         urns = parse_list_raw_urns(raw_urns)
-        return get_list_posts_sorted_without_promoted(urns, posts)
+        sorted_posts: list[dict[str, Any]] = get_list_posts_sorted_without_promoted(urns, posts)
+        return sorted_posts
 
     def get_feed_posts(self, limit: int) -> list[dict[str, Any]]:
         return self.fetch_feed_posts(limit)
@@ -170,7 +171,8 @@ class LinkedInTransport:
                 f"LinkedIn returned HTTP {response.status_code} for {response.url}"
             )
         try:
-            return response.json()
+            result: dict[str, Any] = response.json()
+            return result
         except ValueError as exc:
             raise LinkedInTransportError(
                 f"LinkedIn returned non-JSON content for {response.url}"
@@ -201,8 +203,8 @@ class LinkedInTransport:
 
     def _parse_profile_page(self, html: str, public_id: str) -> dict[str, Any]:
         soup = BeautifulSoup(html, "lxml")
-        code_map = {
-            tag.get("id"): tag.get_text()
+        code_map: dict[str, str] = {
+            str(tag.get("id")): tag.get_text()
             for tag in soup.find_all("code")
             if tag.get("id")
         }
@@ -211,8 +213,8 @@ class LinkedInTransport:
         if not isinstance(included, list):
             raise LinkedInTransportError("LinkedIn profile payload returned an invalid included list.")
 
-        entities_by_urn = {
-            item.get("entityUrn"): item
+        entities_by_urn: dict[str, dict[str, Any]] = {
+            str(item["entityUrn"]): item
             for item in included
             if isinstance(item, dict) and item.get("entityUrn")
         }
@@ -262,7 +264,8 @@ class LinkedInTransport:
             if not body_text:
                 continue
             try:
-                return json.loads(body_text)
+                body: dict[str, Any] = json.loads(body_text)
+                return body
             except json.JSONDecodeError as exc:
                 raise LinkedInTransportError(
                     f"LinkedIn embedded an unreadable profile payload for {public_id}."

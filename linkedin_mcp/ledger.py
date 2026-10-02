@@ -14,6 +14,8 @@ import re
 import tempfile
 from pathlib import Path
 
+from linkedin_mcp.cdp_session import JSON
+
 ENV_VAR = "JOE_REFERRAL_LEDGER"
 DEFAULT_PATH = Path.home() / ".config" / "joe-referral" / "ledger.json"
 # Kept for Misha, or never contacted. Mirrors the linkedin-outreach Referral Policy.
@@ -32,7 +34,7 @@ def _norm(value: str | None) -> str:
     return (value or "").strip().casefold()
 
 
-def load(path: Path | str | None = None) -> list[dict]:
+def load(path: Path | str | None = None) -> list[JSON]:
     p = _path(path)
     if not p.exists():
         return []
@@ -64,7 +66,7 @@ def contacted(
     return any(_norm(e.get(k)) == v for e in load(path) for k, v in wanted.items())
 
 
-def append(entry: dict, path: Path | str | None = None) -> bool:
+def append(entry: JSON, path: Path | str | None = None) -> bool:
     """Add entry unless its email or profile_url is already present. Returns
     whether it was added. Atomic: temp file + rename."""
     p = _path(path)
@@ -97,5 +99,5 @@ def contacted_company_in(text: str, path: Path | str | None = None) -> str:
     for entry in load(path):
         company = _norm(entry.get("company"))
         if len(company) >= 3 and re.search(rf"(?<!\w){re.escape(company)}(?!\w)", lowered):
-            return entry["company"]
+            return str(entry["company"])
     return ""

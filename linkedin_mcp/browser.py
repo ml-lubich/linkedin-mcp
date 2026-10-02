@@ -6,10 +6,13 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 import random
 import time
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable, Iterator
 
 from .auth import AuthSession
 from .voyager_config import AppConfig
+
+if TYPE_CHECKING:
+    from playwright.sync_api import Locator, Page
 
 
 class BrowserActionError(RuntimeError):
@@ -147,7 +150,7 @@ class LinkedInBrowserFallback:
             )
 
     @contextmanager
-    def _open_page(self, url: str):
+    def _open_page(self, url: str) -> Iterator[Page]:
         try:
             from playwright.sync_api import sync_playwright
         except ImportError as exc:  # pragma: no cover - guarded by packaging
@@ -172,7 +175,7 @@ class LinkedInBrowserFallback:
             context.close()
             browser.close()
 
-    def _set_visibility(self, page, visibility: str) -> None:
+    def _set_visibility(self, page: Page, visibility: str) -> None:
         label = "Anyone" if visibility == "public" else "Connections only"
         self._click_first(
             page,
@@ -201,7 +204,7 @@ class LinkedInBrowserFallback:
             optional=True,
         )
 
-    def _click_first(self, page, selectors: Iterable[str], optional: bool = False) -> None:
+    def _click_first(self, page: Page, selectors: Iterable[str], optional: bool = False) -> None:
         for selector in selectors:
             locator = page.locator(selector)
             if locator.count():
@@ -210,7 +213,7 @@ class LinkedInBrowserFallback:
         if not optional:
             raise BrowserActionError(f"Unable to locate LinkedIn UI control for selectors: {selectors}")
 
-    def _locator_for(self, page, selectors: Iterable[str]):
+    def _locator_for(self, page: Page, selectors: Iterable[str]) -> Locator:
         for selector in selectors:
             locator = page.locator(selector)
             if locator.count():

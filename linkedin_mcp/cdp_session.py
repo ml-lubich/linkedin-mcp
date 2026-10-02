@@ -32,6 +32,8 @@ from typing import Any
 
 from own_chrome.cdp import ChromeError, cdp_call, pick_page
 
+JSON = dict[str, Any]  # JSON/CDP boundary: payload shapes are page-defined
+
 
 class CdpSession:
     """A single WebSocket connection to one Chrome tab, for a short sequence
@@ -137,7 +139,8 @@ class CdpSession:
             if message.get("id") == call_id:
                 if "error" in message:
                     raise ChromeError(json.dumps(message["error"]))
-                return message.get("result", {})
+                result: JSON = message.get("result", {})
+                return result
 
     def close(self) -> None:
         try:

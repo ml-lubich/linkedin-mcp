@@ -23,6 +23,7 @@ uv run playwright install chromium
 
 ```bash
 uv run ruff check .
+uv run mypy linkedin_mcp   # strict; no `# type: ignore`, no new `Any`
 uv run pytest -q
 uv run python -m compileall linkedin_mcp tests
 ```

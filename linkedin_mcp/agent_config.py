@@ -9,6 +9,7 @@ import os
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Mapping
 
 CONFIG_PATH = Path.home() / ".config" / "linkedin-agent" / "config.toml"
 
@@ -68,17 +69,17 @@ class Config:
     to_dedupe_window_seconds: int = 86400
 
 
-def _load_toml(path: Path) -> dict:
+def _load_toml(path: Path) -> dict[str, Any]:  # TOML boundary
     if not path.exists():
         return {}
     with path.open("rb") as handle:
         return tomllib.load(handle)
 
 
-def load_config(path: Path | None = None, env: dict | None = None) -> Config:
+def load_config(path: Path | None = None, env: Mapping[str, str] | None = None) -> Config:
     """Read config.toml (if present) then apply LINKEDIN_AGENT_* env overrides."""
     raw = _load_toml(path or CONFIG_PATH)
-    env = os.environ if env is None else env
+    environ: Mapping[str, str] = os.environ if env is None else env
 
     chrome = raw.get("chrome") or {}
     user = raw.get("user") or {}
@@ -114,28 +115,28 @@ def load_config(path: Path | None = None, env: dict | None = None) -> Config:
         to_dedupe_window_seconds=int(raw.get("to_dedupe_window_seconds") or 86400),
     )
 
-    if env.get("LINKEDIN_AGENT_GOVERNOR_DB"):
-        cfg.governor_db_path = env["LINKEDIN_AGENT_GOVERNOR_DB"]
-    if env.get("LINKEDIN_AGENT_CDP_PORT"):
-        cfg.cdp_port = int(env["LINKEDIN_AGENT_CDP_PORT"])
-    if env.get("LINKEDIN_AGENT_SELF_NAME"):
-        cfg.self_name = env["LINKEDIN_AGENT_SELF_NAME"]
-    if env.get("LINKEDIN_AGENT_REFEREE_NAME"):
-        cfg.referral.name = env["LINKEDIN_AGENT_REFEREE_NAME"]
+    if environ.get("LINKEDIN_AGENT_GOVERNOR_DB"):
+        cfg.governor_db_path = environ["LINKEDIN_AGENT_GOVERNOR_DB"]
+    if environ.get("LINKEDIN_AGENT_CDP_PORT"):
+        cfg.cdp_port = int(environ["LINKEDIN_AGENT_CDP_PORT"])
+    if environ.get("LINKEDIN_AGENT_SELF_NAME"):
+        cfg.self_name = environ["LINKEDIN_AGENT_SELF_NAME"]
+    if environ.get("LINKEDIN_AGENT_REFEREE_NAME"):
+        cfg.referral.name = environ["LINKEDIN_AGENT_REFEREE_NAME"]
         cfg.referral.enabled = True
-    if env.get("LINKEDIN_AGENT_REFEREE_EMAIL"):
-        cfg.referral.email = env["LINKEDIN_AGENT_REFEREE_EMAIL"]
-    if env.get("LINKEDIN_AGENT_REFEREE_LINKEDIN"):
-        cfg.referral.linkedin_url = env["LINKEDIN_AGENT_REFEREE_LINKEDIN"]
-    if env.get("LINKEDIN_AGENT_REFEREE_RESUME"):
-        cfg.referral.resume_path = env["LINKEDIN_AGENT_REFEREE_RESUME"]
-    if env.get("LINKEDIN_AGENT_RESERVED_COMPANIES"):
-        cfg.reserved_for_self = _split_csv(env["LINKEDIN_AGENT_RESERVED_COMPANIES"])
-    if env.get("LINKEDIN_AGENT_NEVER_CONTACT"):
-        cfg.never_contact = _split_csv(env["LINKEDIN_AGENT_NEVER_CONTACT"])
-    if env.get("LINKEDIN_AGENT_ATTACHMENTS_DIR"):
-        cfg.attachments_dir = env["LINKEDIN_AGENT_ATTACHMENTS_DIR"]
-    if env.get("LINKEDIN_AGENT_TO_DEDUPE_WINDOW"):
-        cfg.to_dedupe_window_seconds = int(env["LINKEDIN_AGENT_TO_DEDUPE_WINDOW"])
+    if environ.get("LINKEDIN_AGENT_REFEREE_EMAIL"):
+        cfg.referral.email = environ["LINKEDIN_AGENT_REFEREE_EMAIL"]
+    if environ.get("LINKEDIN_AGENT_REFEREE_LINKEDIN"):
+        cfg.referral.linkedin_url = environ["LINKEDIN_AGENT_REFEREE_LINKEDIN"]
+    if environ.get("LINKEDIN_AGENT_REFEREE_RESUME"):
+        cfg.referral.resume_path = environ["LINKEDIN_AGENT_REFEREE_RESUME"]
+    if environ.get("LINKEDIN_AGENT_RESERVED_COMPANIES"):
+        cfg.reserved_for_self = _split_csv(environ["LINKEDIN_AGENT_RESERVED_COMPANIES"])
+    if environ.get("LINKEDIN_AGENT_NEVER_CONTACT"):
+        cfg.never_contact = _split_csv(environ["LINKEDIN_AGENT_NEVER_CONTACT"])
+    if environ.get("LINKEDIN_AGENT_ATTACHMENTS_DIR"):
+        cfg.attachments_dir = environ["LINKEDIN_AGENT_ATTACHMENTS_DIR"]
+    if environ.get("LINKEDIN_AGENT_TO_DEDUPE_WINDOW"):
+        cfg.to_dedupe_window_seconds = int(environ["LINKEDIN_AGENT_TO_DEDUPE_WINDOW"])
 
     return cfg
