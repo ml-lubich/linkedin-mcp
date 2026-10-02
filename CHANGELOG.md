@@ -4,6 +4,16 @@ All notable changes to this project should be documented in this file.
 
 The format is based on Keep a Changelog, adapted for this repository.
 
+## [Unreleased]
+
+- Added `ledger.py`: the shared Joe-referral ledger (email + LinkedIn), atomic
+  appends, dedupe by email/profile URL, loud failure on malformed JSON, and the
+  shared exclusion regex.
+- `classify.classify()` returns `{hiring, excluded, already_referred, reason}`
+  using the ledger; new deterministic `classify.joe_fit()` honesty guard.
+- `scan` applies the ledger/exclusion/last-speaker/referee rules, takes an
+  injectable page reader, and `scan.to_json` prints JSON candidates with fit.
+
 ## [0.2.0] - 2026-09-27
 
 Renamed `linkedin-cli` to `linkedin-mcp` and absorbed `linkedin-agent`.

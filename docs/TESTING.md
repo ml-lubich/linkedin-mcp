@@ -56,6 +56,13 @@ what it was before a change.
   CLI-level), Hypothesis property tests (`test_properties.py`), and an
   edge-string table (`test_edge_strings.py`: empty/unicode/emoji/injection-
   shaped/very-long input) run against every text-accepting pure function.
+- `tests/test_ledger.py` — shared referral ledger: missing/empty/malformed
+  file (raises, never overwritten), atomic append, dedupe, same-company
+  match, unicode, exclusion regex. `JOE_REFERRAL_LEDGER` points tests at a
+  temp file; no test touches `~/.config/joe-referral`.
+- `tests/test_classify.py` — also `classify()` and `joe_fit()` (skip /
+  stretch / strong table). `tests/test_scan_ledger.py` — scan with an
+  injected fake reader plus ledger/exclusion rules and JSON output.
 - `tests/test_cli_help.py` — `-h` and `--help` on the root, each command group, and a leaf command. `--json` / `-j` shows up on `messages read -h`.
 - `tests/test_cli_messaging_url_race.py` — every CLI command and flag that
   opens messaging (`scan`, `messages open|threads|select|read|popups|send

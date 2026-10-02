@@ -37,7 +37,12 @@ only — see `tests/test_own_chrome_import_boundary.py`):
 - `messages open/threads/select/read/send/popups/workflow/commands` —
   open messaging, list/filter threads, select one by name, read it, reply
   (with an optional file attachment), handle a dialog, classify-then-draft.
-- `scan` — threads that still need a reply/referral.
+- `scan` — threads that still need a reply/referral. Deterministic: skips
+  threads we spoke last, that already mention the referee, hit the exclusion
+  list, or involve a company already in the shared ledger
+  (`~/.config/joe-referral/ledger.json`, also written by the email tool);
+  `scan.to_json` adds a `joe_fit` verdict (strong/stretch/skip). See
+  [`skills/joe-referral.md`](./skills/joe-referral.md).
 - `referral draft` / `referral send` — draft/send a referral message with a
   resume attached, paced and deduped through a rate governor.
 

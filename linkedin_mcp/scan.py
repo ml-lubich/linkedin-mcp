@@ -10,14 +10,15 @@ of raw display lines, since that split is already available.
 
 from __future__ import annotations
 
+import json
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from own_chrome.cdp import ChromeError, evaluate
 
-from linkedin_mcp import messaging
+from linkedin_mcp import ledger, messaging
 from linkedin_mcp.agent_config import Config
-from linkedin_mcp.classify import already_referred, exclude_reason
+from linkedin_mcp.classify import already_referred, exclude_reason, joe_fit
 
 TAB = "linkedin.com"
 
@@ -36,6 +37,26 @@ class Candidate:
     text: str
 
 
+def to_json(candidates: dict[str, Candidate]) -> str:
+    """Stable JSON list for agents: one object per candidate, plus a joe_fit verdict."""
+    rows = [{**asdict(c), "fit": joe_fit(c.text)} for c in candidates.values()]
+    return json.dumps(rows, indent=1, ensure_ascii=False)
+
+
+def _skip_reason(name: str, text: str, last_speaker_is_self: bool, config: Config) -> str:
+    """Policy from the linkedin-outreach skill: last speaker is not us, referee
+    not mentioned, nothing excluded, nobody at that company already contacted."""
+    if last_speaker_is_self:
+        return "last-speaker-is-self"
+    if already_referred(text, config):
+        return "referee-mentioned"
+    if ledger.excluded(f"{name}\n{text}") or exclude_reason(name, "", text, config):
+        return "excluded"
+    if ledger.contacted(name=name) or ledger.contacted_company_in(text):
+        return "already-in-ledger"
+    return ""
+
+
 def _load_full_thread_list(port: int, rounds: int, sleep_seconds: float) -> None:
     for _ in range(rounds):
         evaluate(port, _SCROLL_JS, host=TAB)
@@ -51,11 +72,14 @@ def find_referral_candidates(
     scroll_rounds: int = 15,
     sleep_seconds: float = 2.0,
     click_settle_seconds: float = 2.5,
+    reader=None,
 ) -> dict[str, Candidate]:
     """Load every thread, select each one whose preview isn't from us, and
     keep the ones where the last speaker isn't us, the referee isn't
-    mentioned yet, and nothing is excluded. Requires the linkedin.com tab
+    mentioned yet, and nothing is excluded or already in the shared ledger.
+    `reader` (default: the messaging module) is injectable for tests. Requires the linkedin.com tab
     and messaging open."""
+    messaging = reader or globals()["messaging"]
     cdp_port = port if port is not None else config.cdp_port
     opened = messaging.ensure_messaging(cdp_port)
     # "already" on a messaging tab omits ready; a navigate that never
@@ -94,9 +118,7 @@ def find_referral_candidates(
         text = "\n".join(data.get("bodies") or [])
         speakers = data.get("speakers") or []
         last_speaker_is_self = bool(config.self_name) and bool(speakers) and speakers[-1] == config.self_name
-        if already_referred(text, config) or last_speaker_is_self:
-            continue
-        if exclude_reason(name, "", text, config):
+        if _skip_reason(name, text, last_speaker_is_self, config):
             continue
         candidates[name] = Candidate(
             name=name,
