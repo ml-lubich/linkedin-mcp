@@ -6,6 +6,18 @@ The format is based on Keep a Changelog, adapted for this repository.
 
 ## [Unreleased]
 
+- Token-minimal CLI: every read command prints one line of compact JSON; global
+  `--fields`, `--limit`, `--max-chars` (default 300); one-line errors with the
+  next step (`linkedin_mcp/compact.py`); write commands print one status line.
+  `--json` is accepted and a no-op. `messages threads --filter` with no match
+  now exits 2 with or without `--json`.
+- `linkedin scan` prints `scan.to_json` (compact, with `fit`); `core.classify_message`
+  now returns `classify()`'s `{hiring, excluded, already_referred, reason}`
+  (`exclude_reason` is gone, use `reason`).
+- Fixed the 9 stale `tests/test_mut_messaging.py` tests: they now mock the real
+  pinned-tab path (`pages` + `evaluate_pinned`). The tab-collision test became
+  "never picks a tab whose URL merely embeds the messaging URL".
+- New agent skill `~/.claude/skills/linkedin/SKILL.md`.
 - Added `ledger.py`: the shared Joe-referral ledger (email + LinkedIn), atomic
   appends, dedupe by email/profile URL, loud failure on malformed JSON, and the
   shared exclusion regex.

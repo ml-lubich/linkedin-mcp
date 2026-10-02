@@ -5,29 +5,47 @@ tests/test_mcp_parity.py, which fails if a command and its tool drift apart).
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
 from typing import Optional
 
 import typer
 from rich.console import Console
+from typer.core import TyperGroup
 
-from . import __version__, core
-from .formatter import (
-    build_search_table,
-    build_status_panel,
-    print_post_detail,
-    print_post_table,
-    print_profile,
-)
-from .serialization import posts_to_json, profile_to_dict, search_results_to_json, to_json
+from . import __version__, compact, core
+from . import scan as scan_mod
+from .serialization import profile_to_dict
 
 console = Console(stderr=True)
 REACTION_CHOICES = ["like", "celebrate", "support", "love", "insightful", "curious"]
 
 _HELP = {"help_option_names": ["-h", "--help"]}
 
+_HOISTED = ("--fields", "--max-chars")
+
+
+class _RootGroup(TyperGroup):
+    """Accept --fields/--max-chars anywhere on the line (`li scan --fields name`),
+    not only before the subcommand: hoist them to the root before parsing."""
+
+    def parse_args(self, ctx, args):
+        hoisted: list[str] = []
+        rest: list[str] = []
+        it = iter(args)
+        for arg in it:
+            if arg in _HOISTED:
+                hoisted += [arg, next(it, "")]
+            elif arg.startswith(tuple(h + "=" for h in _HOISTED)):
+                hoisted.append(arg)
+            else:
+                rest.append(arg)
+        return super().parse_args(ctx, hoisted + rest)
+
+
 app = typer.Typer(
+    cls=_RootGroup,
     name="linkedin",
     help="linkedin - LinkedIn CLI + MCP server.",
     add_completion=False,
@@ -62,6 +80,9 @@ def main_callback(
     ctx: typer.Context,
     config_path: Optional[str] = typer.Option(None, "--config", help="Path to a config YAML/TOML file."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
+    fields: Optional[str] = typer.Option(None, "--fields", "-F", help="Comma list of keys to keep per row (e.g. name,url)."),
+    limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Max rows to print (a final {\"more\":k} row says k were cut)."),
+    max_chars: int = typer.Option(300, "--max-chars", help="Truncate every string to N chars (0 = no cut)."),
     version: Optional[bool] = typer.Option(
         None, "--version", callback=_version_callback, is_eager=True, help="Show version and exit."
     ),
@@ -74,6 +95,7 @@ def main_callback(
     )
     ctx.ensure_object(dict)
     ctx.obj["config_path"] = config_path
+    ctx.obj["shape"] = {"fields": compact.parse_fields(fields), "limit": limit, "max_chars": max_chars}
 
 
 def _config_path(ctx: typer.Context) -> Optional[str]:
@@ -87,8 +109,22 @@ def _write_output(output_file: Optional[str], payload: str) -> None:
         Path(output_file).write_text(payload + "\n", encoding="utf-8")
 
 
+def _emit(ctx: typer.Context, data, output_file: Optional[str] = None, **override) -> None:
+    """Print a read result as one line of compact JSON (the default for every
+    read command; --json is accepted and changes nothing)."""
+    opts = {**((ctx.obj or {}).get("shape") or {}), **{k: v for k, v in override.items() if v is not None}}
+    payload = compact.dumps(compact.shape(data, **opts))
+    _write_output(output_file, payload)
+    typer.echo(payload)
+
+
+def _status(title: str, ok: bool, detail: str = "") -> None:
+    """One-line result for write commands: `ok: title: detail`."""
+    typer.echo(f"{'ok' if ok else 'FAIL'}: {title}" + (f": {' '.join(str(detail).split())}" if detail else ""))
+
+
 def _handle_error(exc: Exception) -> None:
-    console.print(build_status_panel("linkedin", False, str(exc)))
+    typer.echo(compact.error_line(exc), err=True)
     raise typer.Exit(1)
 
 
@@ -158,7 +194,7 @@ def auth_status_cmd(ctx: typer.Context) -> None:
         detail_lines.append(f"hint={payload['hint']}")
 
     title = "Authentication OK" if success else "Authentication degraded"
-    console.print(build_status_panel(title, success, "\n".join(detail_lines)))
+    _status(title, success, "\n".join(detail_lines))
     if not success:
         raise typer.Exit(1)
 
@@ -172,9 +208,9 @@ def auth_capture_cmd(
     """Poll a CDP-attached Chrome until logged in, then save the session cookie. Never prints cookie values."""
     result = core.auth_capture(port=port, timeout=timeout)
     if as_json:
-        typer.echo(to_json(result))
+        typer.echo(compact.dumps(result))
     else:
-        console.print(build_status_panel("Session capture", bool(result.get("captured")), str(result)))
+        _status("Session capture", bool(result.get("captured")), str(result))
     if not result.get("captured"):
         raise typer.Exit(1)
 
@@ -201,12 +237,7 @@ def feed(
     except Exception as exc:
         _handle_error(exc)
         return
-    payload = posts_to_json(posts)
-    _write_output(output_file, payload)
-    if as_json:
-        typer.echo(payload)
-        return
-    print_post_table(posts, console=console, title="LinkedIn feed")
+    _emit(ctx, list(posts), output_file)
 
 
 @app.command()
@@ -223,12 +254,7 @@ def search(
     except Exception as exc:
         _handle_error(exc)
         return
-    payload = search_results_to_json(results)
-    _write_output(output_file, payload)
-    if as_json:
-        typer.echo(payload)
-        return
-    console.print(build_search_table(results, title=f"Search: {query}"))
+    _emit(ctx, list(results), output_file)
 
 
 @app.command()
@@ -243,10 +269,7 @@ def profile(
     except Exception as exc:
         _handle_error(exc)
         return
-    if as_json:
-        typer.echo(to_json(profile_to_dict(result)))
-        return
-    print_profile(result, console=console)
+    _emit(ctx, profile_to_dict(result))
 
 
 @app.command("profile-posts")
@@ -263,12 +286,7 @@ def profile_posts(
     except Exception as exc:
         _handle_error(exc)
         return
-    payload = posts_to_json(posts)
-    _write_output(output_file, payload)
-    if as_json:
-        typer.echo(payload)
-        return
-    print_post_table(posts, console=console, title=f"Posts by {identifier}")
+    _emit(ctx, list(posts), output_file)
 
 
 @app.command()
@@ -283,10 +301,7 @@ def activity(
     except Exception as exc:
         _handle_error(exc)
         return
-    if as_json:
-        typer.echo(to_json(post))
-        return
-    print_post_detail(post, console=console)
+    _emit(ctx, post)
 
 
 # ---- Voyager/browser write commands (confirm-gated) ---------------------
@@ -305,7 +320,7 @@ def post(
     except Exception as exc:
         _handle_error(exc)
         return
-    console.print(build_status_panel("Post created", True, detail))
+    _status("Post created", True, detail)
 
 
 @app.command()
@@ -324,7 +339,7 @@ def react(
     except Exception as exc:
         _handle_error(exc)
         return
-    console.print(build_status_panel("Reaction applied", True, detail))
+    _status("Reaction applied", True, detail)
 
 
 @app.command()
@@ -339,7 +354,7 @@ def unreact(
     except Exception as exc:
         _handle_error(exc)
         return
-    console.print(build_status_panel("Reaction removed", True, detail))
+    _status("Reaction removed", True, detail)
 
 
 @app.command()
@@ -354,7 +369,7 @@ def save(
     except Exception as exc:
         _handle_error(exc)
         return
-    console.print(build_status_panel("Post saved", True, detail))
+    _status("Post saved", True, detail)
 
 
 @app.command()
@@ -369,7 +384,7 @@ def unsave(
     except Exception as exc:
         _handle_error(exc)
         return
-    console.print(build_status_panel("Post unsaved", True, detail))
+    _status("Post unsaved", True, detail)
 
 
 @app.command()
@@ -385,7 +400,7 @@ def comment(
     except Exception as exc:
         _handle_error(exc)
         return
-    console.print(build_status_panel("Comment posted", True, detail))
+    _status("Comment posted", True, detail)
 
 
 # ---- CDP agent commands: drive the user's own logged-in Chrome ----------
@@ -399,7 +414,7 @@ def doctor(
     """Check own-chrome, Chrome's CDP port, LinkedIn login, and referral config."""
     report = core.doctor(config_path=_config_path(ctx))
     if as_json:
-        typer.echo(to_json(report))
+        typer.echo(compact.dumps(report))
     else:
         for check in report["checks"]:
             status = "ok" if check["ok"] else "FAIL"
@@ -410,16 +425,16 @@ def doctor(
 @app.command()
 def scan(
     ctx: typer.Context,
-    as_json: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout."),
+    as_json: bool = typer.Option(False, "--json", "-j", hidden=True, help="Accepted; output is always compact JSON."),
 ) -> None:
-    """Find threads that still need a reply/referral."""
+    """Find threads that still need a referral: [{name,url,unread,text,fit}]. text is the newest --max-chars."""
     candidates = _call(lambda: core.scan(config_path=_config_path(ctx)))
-    if as_json:
-        typer.echo(to_json(candidates))
-        return
-    for name, candidate in candidates.items():
-        status = "unread" if candidate.get("unread") else "read"
-        console.print(f"{name}\t{status}\t{candidate.get('url', '')}")
+    rows = json.loads(scan_mod.to_json(candidates))
+    max_chars = ((ctx.obj or {}).get("shape") or {}).get("max_chars", 300)
+    for row in rows:
+        if max_chars > 0:
+            row["text"] = row.get("text", "")[-max_chars:]  # newest message is last
+    _emit(ctx, rows, max_chars=0)
 
 
 @app.command()
@@ -433,7 +448,7 @@ def classify(
     """Classify a message: hiring? excluded? already referred?"""
     result = core.classify_message(text, name=name, headline=headline, config_path=_config_path(ctx))
     if as_json:
-        typer.echo(to_json(result))
+        typer.echo(compact.dumps(result))
         return
     for key, value in result.items():
         console.print(f"{key}: {value}")
@@ -444,9 +459,9 @@ def post_cdp_draft_cmd(text: str, as_json: bool = typer.Option(False, "--json", 
     """Lint post text against the anti-cringe rules. Never touches the browser."""
     result = core.post_cdp_draft(text)
     if as_json:
-        typer.echo(to_json(result))
+        typer.echo(compact.dumps(result))
         raise typer.Exit(0 if not result["problems"] else 2)
-    console.print(build_status_panel("Post draft", not result["problems"], str(result["problems"]) or "clean"))
+    _status("Post draft", not result["problems"], str(result["problems"]) or "clean")
     raise typer.Exit(0 if not result["problems"] else 2)
 
 
@@ -465,9 +480,9 @@ def post_cdp_publish_cmd(
         _handle_error(exc)
         return
     if as_json:
-        typer.echo(to_json(result))
+        typer.echo(compact.dumps(result))
         return
-    console.print(build_status_panel("Post published", bool(result.get("clicked_post")), str(result)))
+    _status("Post published", bool(result.get("clicked_post")), str(result))
 
 
 @messages_app.command("open")
@@ -475,9 +490,9 @@ def messages_open_cmd(ctx: typer.Context, as_json: bool = typer.Option(False, "-
     """Open LinkedIn messaging in the attached Chrome. Creates a tab if needed."""
     info = _call(lambda: core.messages_open(config_path=_config_path(ctx)))
     if as_json:
-        typer.echo(to_json(info))
+        typer.echo(compact.dumps(info))
         return
-    console.print(build_status_panel("Messaging", bool(info.get("ok")), info.get("url", "")))
+    _status("Messaging", bool(info.get("ok")), info.get("url", ""))
 
 
 @messages_app.command("threads")
@@ -491,12 +506,7 @@ def messages_threads_cmd(
 ) -> None:
     """List messaging threads."""
     data = _call(lambda: core.messages_threads(needle=filter_, limit=limit, unread=unread, no_navigate=no_navigate, config_path=_config_path(ctx)))
-    if as_json:
-        typer.echo(to_json(data))
-        return
-    for thread in data.get("threads") or []:
-        mark = " *" if thread.get("unread") else ""
-        console.print(f"- {thread.get('name', '')}{mark}  {(thread.get('preview') or '')[:80]}")
+    _emit(ctx, data)
     if filter_ and not data.get("threads"):
         raise typer.Exit(2)
 
@@ -510,9 +520,9 @@ def messages_select_cmd(
     """Open the one thread whose name contains NAME. Exits 2 if none match, 3 if several match."""
     result = _call(lambda: core.messages_select(name, config_path=_config_path(ctx)))
     if as_json:
-        typer.echo(to_json(result))
+        typer.echo(compact.dumps(result))
     else:
-        console.print(build_status_panel("select", bool(result.get("ok")), result.get("matched", "")))
+        _status("select", bool(result.get("ok")), result.get("matched", ""))
     if result.get("ambiguous"):
         raise typer.Exit(3)
     if not result.get("ok"):
@@ -528,11 +538,7 @@ def messages_read_cmd(
 ) -> None:
     """Read the open thread (or one you name with --url)."""
     data = _call(lambda: core.messages_read(url=url, limit=limit, config_path=_config_path(ctx)))
-    if as_json:
-        typer.echo(to_json(data))
-        return
-    for i, body in enumerate(data.get("bodies") or []):
-        console.print(f"{i + 1}. {body}")
+    _emit(ctx, data)
 
 
 @messages_app.command("send")
@@ -553,9 +559,9 @@ def messages_send_cmd(
         _handle_error(exc)
         return
     if as_json:
-        typer.echo(to_json(proof))
+        typer.echo(compact.dumps(proof))
         return
-    console.print(build_status_panel("Message sent", bool(proof.get("sent")), str(proof)))
+    _status("Message sent", bool(proof.get("sent")), str(proof))
 
 
 @messages_app.command("popups")
@@ -567,9 +573,9 @@ def messages_popups_cmd(
     """Report the open LinkedIn dialog. Without --apply, nothing is clicked."""
     result = _call(lambda: core.messages_popups(apply=apply, config_path=_config_path(ctx)))
     if as_json:
-        typer.echo(to_json(result))
+        typer.echo(compact.dumps(result))
         return
-    console.print(build_status_panel("popups", True, str(result)))
+    _status("popups", True, str(result))
 
 
 @messages_app.command("workflow")
@@ -582,9 +588,9 @@ def messages_workflow_cmd(
     """Classify the open thread and draft a reply. Never sends -- sent is always false."""
     result = _call(lambda: core.messages_workflow(spec, text=text, config_path=_config_path(ctx)))
     if as_json:
-        typer.echo(to_json(result))
+        typer.echo(compact.dumps(result))
         raise typer.Exit(0 if result.get("go") or result.get("reason") == "regex miss" else 2)
-    console.print(build_status_panel("workflow", bool(result.get("go")), str(result)))
+    _status("workflow", bool(result.get("go")), str(result))
     raise typer.Exit(0 if result.get("go") or result.get("reason") == "regex miss" else 2)
 
 
@@ -593,7 +599,7 @@ def messages_commands_cmd(as_json: bool = typer.Option(False, "--json", "-j")) -
     """List the `messages` agent verbs. No browser."""
     result = core.messages_commands()
     if as_json:
-        typer.echo(to_json(result))
+        typer.echo(compact.dumps(result))
         return
     for row in result["commands"]:
         console.print(f"{row['name']}\t{row['summary']}")
@@ -618,9 +624,9 @@ def referral_draft_cmd(
         _handle_error(exc)
         return
     if as_json:
-        typer.echo(to_json(result))
+        typer.echo(compact.dumps(result))
         raise typer.Exit(0 if not result["problems"] else 2)
-    console.print(build_status_panel("Referral draft", not result["problems"], result["draft"]))
+    _status("Referral draft", not result["problems"], result["draft"])
     raise typer.Exit(0 if not result["problems"] else 2)
 
 
@@ -641,12 +647,12 @@ def referral_send_cmd(
         _handle_error(exc)
         return
     if as_json:
-        typer.echo(to_json(result))
+        typer.echo(compact.dumps(result))
         raise typer.Exit(0 if not result["skipped"] else 2)
     if result["skipped"]:
-        console.print(build_status_panel("Referral skipped", False, result["skipped"]))
+        _status("Referral skipped", False, result["skipped"])
         raise typer.Exit(2)
-    console.print(build_status_panel("Referral sent", bool((result["proof"] or {}).get("sent")), result["draft"]))
+    _status("Referral sent", bool((result["proof"] or {}).get("sent")), result["draft"])
 
 
 @app.command("login")
@@ -659,9 +665,9 @@ def login_cmd(
     """Sign the LinkedIn Chrome in using the Keychain password. One attempt; stops on captcha/2FA/checkpoint."""
     result = _call(lambda: core.login(account=account, port=port, config_path=_config_path(ctx)))
     if as_json:
-        typer.echo(to_json(result))
+        typer.echo(compact.dumps(result))
         return
-    console.print(build_status_panel("LinkedIn login", True, f"{result['status']} ({result['account']})"))
+    _status("LinkedIn login", True, f"{result['status']} ({result['account']})")
 
 
 @referral_app.command("queue")
@@ -678,7 +684,7 @@ def referral_queue_cmd(
         lambda: core.referral_queue(queue_file, confirm=confirm, limit=limit, port=port, config_path=_config_path(ctx))
     )
     if as_json:
-        typer.echo(to_json(result))
+        typer.echo(compact.dumps(result))
     else:
         typer.echo("DRY RUN (nothing sent; pass --confirm)" if result["dry_run"] else "SENT RUN")
         for row in result["results"]:
@@ -699,7 +705,7 @@ def prompt_cmd(
         if list_prompts or not name:
             prompts = core.prompt_list()
             if as_json:
-                typer.echo(to_json({"prompts": prompts}))
+                typer.echo(compact.dumps({"prompts": prompts}))
             else:
                 for p in prompts:
                     typer.echo(p)
@@ -707,7 +713,7 @@ def prompt_cmd(
 
         prompt_data = core.prompt_get(name)
         if as_json:
-            typer.echo(to_json(prompt_data))
+            typer.echo(compact.dumps(prompt_data))
         else:
             console.print(f"[bold green]Prompt:[/bold green] {prompt_data['name']}")
             console.print(f"[bold cyan]Description:[/bold cyan] {prompt_data['description']}")

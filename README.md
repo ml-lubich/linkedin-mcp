@@ -188,6 +188,25 @@ export LINKEDIN_PROXY='http://127.0.0.1:7890'
 export LINKEDIN_CONFIG="$PWD/config.yaml"
 ```
 
+## Token-minimal output
+
+Every read command (`scan`, `messages threads|read`, `search`, `feed`, `profile`,
+`profile-posts`, `activity`) prints ONE line of compact JSON. Shape it with
+global options (`--fields`/`--max-chars` work before or after the subcommand,
+`--limit` goes before it):
+
+```bash
+linkedin scan                                  # [{name,url,unread,text,fit}], text = newest 300 chars
+linkedin --limit 5 scan --fields name,url,fit
+linkedin messages read --max-chars 0           # full bodies when you really need them
+```
+
+A list cut by `--limit` ends with `{"more":k}`; dicts holding lists gain `n`
+(row count). `--json` is still accepted and changes nothing. Errors are one
+line on stderr: `error: <what> | next: <command to run>`. Write commands print
+`ok: <what>` / `FAIL: <what>`. `li` is an alias of `linkedin` (inside a venv
+that also installs own-chrome, its own `li` can shadow ours; use `linkedin`).
+
 ## Commands
 
 ```bash
@@ -206,6 +225,9 @@ linkedin save urn:li:activity:123 --confirm
 linkedin unsave urn:li:activity:123 --confirm
 linkedin comment urn:li:activity:123 "nice post" --confirm
 linkedin doctor
+linkedin login
+linkedin scan --fields name,url,fit
+linkedin referral queue queue.json --confirm   # dry run without --confirm
 linkedin classify "InMail: Senior AI Engineer role" --name "Jordan Lee"
 linkedin post-cdp draft "..."
 linkedin post-cdp publish "..." --confirm
@@ -218,7 +240,9 @@ linkedin-mcp serve
 
 ## Skill
 
-This repo ships one Codex/Claude skill in [`skills/linkedin-mcp/`](./skills/linkedin-mcp/)
+The single agent-facing skill is `~/.claude/skills/linkedin/SKILL.md` (login ->
+scan -> queue -> referral queue, plus the Joe-referral policy). This repo also ships
+a Codex/Claude skill in [`skills/linkedin-mcp/`](./skills/linkedin-mcp/)
 covering command selection, the confirm gate, auth troubleshooting, and write
 workflows for both surfaces.
 

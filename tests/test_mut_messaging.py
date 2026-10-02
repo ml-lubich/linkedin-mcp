@@ -85,7 +85,9 @@ def test_read_thread_negative_limit_clamps_to_keep_all(config, monkeypatch):
 
 
 def test_read_thread_accepts_an_already_parsed_dict(config, monkeypatch):
-    monkeypatch.setattr(messaging, "evaluate", lambda *a, **k: {"url": "u", "bodies": ["a", "b"], "speakers": []})
+    monkeypatch.setattr(
+        messaging, "evaluate", lambda *a, **k: {"url": "u", "bodies": ["a", "b"], "speakers": []}
+    )
     result = messaging.read_thread(config.cdp_port, limit=1)
     assert result["bodies"] == ["b"]
 
@@ -97,6 +99,32 @@ def test_read_thread_missing_bodies_key_defaults_to_empty_list(config, monkeypat
 
 
 # ---- send_message: defaults, port ternary, governor default action --------
+
+
+def _pin(monkeypatch, fake, ports=None):
+    """Mock the real CDP path: pages() yields one pinned linkedin tab and
+    every step goes through evaluate_pinned(ws_url, script)."""
+    tab = {
+        "id": "msg",
+        "url": "https://www.linkedin.com/messaging/",
+        "webSocketDebuggerUrl": "ws://pinned",
+    }
+
+    def fake_pages(port):
+        if ports is not None:
+            ports.append(port)
+        return [tab]
+
+    monkeypatch.setattr(messaging, "pages", fake_pages)
+    monkeypatch.setattr(
+        messaging,
+        "evaluate_pinned",
+        lambda ws, script: (
+            "https://www.linkedin.com/messaging/"
+            if script == "location.href"
+            else fake(None, script)
+        ),
+    )
 
 
 def test_send_message_default_verify_attempts_and_wait_seconds(config, monkeypatch):
@@ -116,7 +144,7 @@ def test_send_message_default_verify_attempts_and_wait_seconds(config, monkeypat
             return False
         return ""
 
-    monkeypatch.setattr(messaging, "evaluate", fake_evaluate)
+    _pin(monkeypatch, fake_evaluate)
     proof = messaging.send_message("hello", config, confirm=True)
     assert proof["sent"] is False
     assert attempts["count"] == 8
@@ -137,7 +165,7 @@ def test_send_message_default_attach_wait_seconds(config, monkeypatch):
             return True
         return "hello"
 
-    monkeypatch.setattr(messaging, "evaluate", fake_evaluate)
+    _pin(monkeypatch, fake_evaluate)
     messaging.send_message(
         "hello",
         config,
@@ -153,7 +181,6 @@ def test_send_message_uses_explicit_port_over_config_cdp_port(config, monkeypatc
     ports_seen = []
 
     def fake_evaluate(port, script, **kw):
-        ports_seen.append(port)
         if "insertText" in script:
             return True
         if "getAttribute('disabled')" in script:
@@ -162,8 +189,10 @@ def test_send_message_uses_explicit_port_over_config_cdp_port(config, monkeypatc
             return True
         return "hi"
 
-    monkeypatch.setattr(messaging, "evaluate", fake_evaluate)
-    messaging.send_message("hi", config, confirm=True, port=5555, verify_attempts=1, verify_wait_seconds=0)
+    _pin(monkeypatch, fake_evaluate, ports_seen)
+    messaging.send_message(
+        "hi", config, confirm=True, port=5555, verify_attempts=1, verify_wait_seconds=0
+    )
     assert ports_seen and all(p == 5555 for p in ports_seen)
     assert config.cdp_port != 5555
 
@@ -180,10 +209,16 @@ def test_send_message_governor_defaults_action_to_message(config, monkeypatch, t
             return True
         return "hi carol"
 
-    monkeypatch.setattr(messaging, "evaluate", fake_evaluate)
+    _pin(monkeypatch, fake_evaluate)
     gov = Governor(tmp_path / "gov.db", now=1_000_000.0)
     messaging.send_message(
-        "hi carol", config, confirm=True, governor=gov, target="carol", verify_attempts=1, verify_wait_seconds=0
+        "hi carol",
+        config,
+        confirm=True,
+        governor=gov,
+        target="carol",
+        verify_attempts=1,
+        verify_wait_seconds=0,
     )
     assert gov.already_done("message", "carol")
     gov.close()
@@ -206,7 +241,7 @@ def test_send_message_verifies_against_the_sent_text_when_no_hint_is_given(confi
             return True
         return ""
 
-    monkeypatch.setattr(messaging, "evaluate", fake_evaluate)
+    _pin(monkeypatch, fake_evaluate)
     proof = messaging.send_message(
         "a distinctive phrase", config, confirm=True, verify_attempts=1, verify_wait_seconds=0
     )
@@ -214,7 +249,7 @@ def test_send_message_verifies_against_the_sent_text_when_no_hint_is_given(confi
 
 
 def test_send_message_not_confirmed_without_an_attachment_has_no_attach_clause(config, monkeypatch):
-    monkeypatch.setattr(messaging, "evaluate", lambda *a, **k: True)
+    _pin(monkeypatch, lambda *a, **k: True)
     with pytest.raises(messaging.SendNotConfirmedError) as excinfo:
         messaging.send_message("hello", config, confirm=False)
     assert str(excinfo.value) == "send_message requires confirm=True; nothing was sent"
@@ -224,13 +259,12 @@ def test_send_message_not_confirmed_without_an_attachment_has_no_attach_clause(c
 # ---- linkedin_tab: collision detection -------------------------------------
 
 
-def test_linkedin_tab_raises_when_another_open_tab_url_contains_the_chosen_one(monkeypatch):
+def test_linkedin_tab_never_picks_an_evil_tab_whose_url_embeds_the_chosen_one(monkeypatch):
     chosen_url = "https://www.linkedin.com/messaging/"
     evil = {"id": "evil", "url": f"https://evil.tld/#{chosen_url}"}
     good = {"id": "msg", "url": chosen_url}
-    monkeypatch.setattr(messaging, "pages", lambda port: [good, evil])
-    with pytest.raises(messaging.ChromeError, match="refusing to target"):
-        messaging.linkedin_tab(9222)
+    monkeypatch.setattr(messaging, "pages", lambda port: [evil, good])
+    assert messaging.linkedin_tab(9222)["id"] == "msg"
 
 
 def test_linkedin_tab_does_not_flag_itself_as_a_collision(monkeypatch):
@@ -252,15 +286,25 @@ def test_linkedin_tab_two_unrelated_linkedin_tabs_is_not_a_collision(monkeypatch
 def test_ensure_messaging_treats_a_bare_messaging_url_as_already_open(monkeypatch):
     tab = {"id": "msg", "url": "https://www.linkedin.com/messaging", "title": "Messaging"}
     monkeypatch.setattr(messaging, "pages", lambda port: [tab])
-    monkeypatch.setattr(messaging, "navigate", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no navigate")))
+    monkeypatch.setattr(
+        messaging, "navigate", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no navigate"))
+    )
     info = messaging.ensure_messaging(9222)
-    assert info == {"action": "open", "opened": "already", "ok": True, "url": tab["url"], "title": "Messaging"}
+    assert info == {
+        "action": "open",
+        "opened": "already",
+        "ok": True,
+        "url": tab["url"],
+        "title": "Messaging",
+    }
 
 
 def test_ensure_messaging_treats_a_thread_url_as_already_open(monkeypatch):
     tab = {"id": "msg", "url": "https://www.linkedin.com/messaging/thread/abc/", "title": "Thread"}
     monkeypatch.setattr(messaging, "pages", lambda port: [tab])
-    monkeypatch.setattr(messaging, "navigate", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no navigate")))
+    monkeypatch.setattr(
+        messaging, "navigate", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no navigate"))
+    )
     info = messaging.ensure_messaging(9222)
     assert info["opened"] == "already"
 
@@ -272,11 +316,17 @@ def test_ensure_messaging_missing_title_on_an_already_open_tab_defaults_empty(mo
     assert info["title"] == ""
 
 
-def test_ensure_messaging_falls_back_to_MESSAGING_url_and_empty_title_when_open_tab_omits_them(monkeypatch):
+def test_ensure_messaging_falls_back_to_MESSAGING_url_and_empty_title_when_open_tab_omits_them(
+    monkeypatch,
+):
     monkeypatch.setattr(messaging, "pages", lambda port: [])
     monkeypatch.setattr(messaging, "open_tab", lambda port, url: {})
     monkeypatch.setattr(
-        messaging, "evaluate", lambda port, expr, **kw: json.dumps({"ready": True, "url": messaging.MESSAGING, "title": ""})
+        messaging,
+        "evaluate",
+        lambda port, expr, **kw: json.dumps(
+            {"ready": True, "url": messaging.MESSAGING, "title": ""}
+        ),
     )
     info = messaging.ensure_messaging(9222)
     assert info["url"] == messaging.MESSAGING
@@ -290,10 +340,16 @@ def test_ensure_messaging_navigate_passes_the_exact_host_kwarg(monkeypatch):
         captured["url"] = url
         captured["kw"] = kw
 
-    monkeypatch.setattr(messaging, "pages", lambda port: [{"id": "feed", "url": "https://www.linkedin.com/feed/"}])
+    monkeypatch.setattr(
+        messaging, "pages", lambda port: [{"id": "feed", "url": "https://www.linkedin.com/feed/"}]
+    )
     monkeypatch.setattr(messaging, "navigate", fake_navigate)
     monkeypatch.setattr(
-        messaging, "evaluate", lambda port, expr, **kw: json.dumps({"ready": True, "url": messaging.MESSAGING, "title": ""})
+        messaging,
+        "evaluate",
+        lambda port, expr, **kw: json.dumps(
+            {"ready": True, "url": messaging.MESSAGING, "title": ""}
+        ),
     )
     messaging.ensure_messaging(9222)
     assert captured == {"port": 9222, "url": messaging.MESSAGING, "kw": {"host": messaging.TAB}}
@@ -334,7 +390,11 @@ def test_finish_open_keeps_the_original_url_and_title_when_never_ready(monkeypat
 
 
 def test_list_threads_defaults_needle_limit_and_no_navigate(monkeypatch):
-    monkeypatch.setattr(messaging, "pages", lambda port: [{"id": "msg", "url": "https://www.linkedin.com/messaging/"}])
+    monkeypatch.setattr(
+        messaging,
+        "pages",
+        lambda port: [{"id": "msg", "url": "https://www.linkedin.com/messaging/"}],
+    )
     captured = {}
 
     def fake_eval(port, expr):
@@ -412,28 +472,53 @@ def test_select_thread_exact_match_passes_the_disambiguated_href(monkeypatch):
 
 
 def test_popups_default_policy_declines_and_reaches_the_configured_tab(monkeypatch):
-    monkeypatch.setattr(messaging, "pages", lambda port: [{"id": "msg", "url": "https://www.linkedin.com/messaging/"}])
+    monkeypatch.setattr(
+        messaging,
+        "pages",
+        lambda port: [
+            {
+                "id": "msg",
+                "url": "https://www.linkedin.com/messaging/",
+                "webSocketDebuggerUrl": "ws://pinned",
+            }
+        ],
+    )
     ports_seen = []
 
-    def fake_evaluate(port, expr, **kw):
-        ports_seen.append(port)
-        return json.dumps({"title": "Share your contact info?", "buttons": ["No, don't share", "Yes, please share"]})
+    def fake_evaluate(ws, expr):
+        ports_seen.append(ws)
+        return json.dumps(
+            {
+                "title": "Share your contact info?",
+                "buttons": ["No, don't share", "Yes, please share"],
+            }
+        )
 
-    monkeypatch.setattr(messaging, "evaluate", fake_evaluate)
+    monkeypatch.setattr(messaging, "evaluate_pinned", fake_evaluate)
     result = messaging.popups(9222)
     assert result["action"] == "No, don't share"
-    assert ports_seen == [9222]
+    assert ports_seen == ["ws://pinned"]
 
 
 def test_popups_apply_without_a_chosen_action_never_clicks(monkeypatch):
-    monkeypatch.setattr(messaging, "pages", lambda port: [{"id": "msg", "url": "https://www.linkedin.com/messaging/"}])
+    monkeypatch.setattr(
+        messaging,
+        "pages",
+        lambda port: [
+            {
+                "id": "msg",
+                "url": "https://www.linkedin.com/messaging/",
+                "webSocketDebuggerUrl": "ws://pinned",
+            }
+        ],
+    )
     calls = []
 
-    def fake_evaluate(port, expr, **kw):
+    def fake_evaluate(ws, expr):
         calls.append(expr)
         return json.dumps({"title": "Messaging settings", "buttons": ["Save"]})
 
-    monkeypatch.setattr(messaging, "evaluate", fake_evaluate)
+    monkeypatch.setattr(messaging, "evaluate_pinned", fake_evaluate)
     result = messaging.popups(9222, apply=True)
     assert result["action"] is None
     assert result["applied"] is False
@@ -465,7 +550,15 @@ def test_api_key_keychain_lookup_uses_the_exact_service_and_account(monkeypatch)
 
     monkeypatch.setattr(messaging.subprocess, "check_output", fake_check_output)
     messaging.api_key()
-    assert captured["cmd"] == ["security", "find-generic-password", "-s", "openai", "-a", "li", "-w"]
+    assert captured["cmd"] == [
+        "security",
+        "find-generic-password",
+        "-s",
+        "openai",
+        "-a",
+        "li",
+        "-w",
+    ]
     assert captured["text"] is True
 
 
@@ -501,7 +594,10 @@ def test_complete_sends_the_exact_request_shape(monkeypatch):
     assert captured["method"] == "POST"
     assert captured["headers"]["Authorization"] == "Bearer sk-test"
     assert captured["headers"]["Content-type"] == "application/json"
-    assert captured["body"] == {"model": "gpt-5-nano", "messages": [{"role": "user", "content": "hi"}]}
+    assert captured["body"] == {
+        "model": "gpt-5-nano",
+        "messages": [{"role": "user", "content": "hi"}],
+    }
     assert captured["timeout"] == 30
 
 
@@ -524,7 +620,7 @@ def test_complete_truncates_http_error_detail_to_300_chars(monkeypatch):
         messaging.complete("gpt-5-nano", [])
     msg = str(excinfo.value)
     assert msg.startswith("OpenAI 500: ")
-    assert msg[len("OpenAI 500: "):] == "x" * 300
+    assert msg[len("OpenAI 500: ") :] == "x" * 300
 
 
 # ---- workflow_run: text vs. reading the open thread, no dry_run kwarg -----
@@ -549,7 +645,9 @@ def test_workflow_run_uses_explicit_text_without_reading_the_thread(monkeypatch,
     assert result["sent"] is False
 
 
-def test_workflow_run_reads_the_open_thread_with_limit_4_when_text_is_empty_and_port_given(monkeypatch, tmp_path):
+def test_workflow_run_reads_the_open_thread_with_limit_4_when_text_is_empty_and_port_given(
+    monkeypatch, tmp_path
+):
     spec = tmp_path / "spec.json"
     spec.write_text(json.dumps({}))
     captured = {}
@@ -579,7 +677,9 @@ def test_workflow_run_skips_reading_the_thread_when_no_text_and_no_port(monkeypa
         raise AssertionError("must not read the thread without a port")
 
     monkeypatch.setattr(messaging, "read_thread", boom)
-    monkeypatch.setattr(messaging, "complete", lambda model, messages: json.dumps({"go": False, "reason": "n/a"}))
+    monkeypatch.setattr(
+        messaging, "complete", lambda model, messages: json.dumps({"go": False, "reason": "n/a"})
+    )
     result = messaging.workflow_run(str(spec))
     assert result["go"] is False
 

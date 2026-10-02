@@ -93,7 +93,7 @@ def test_feed_json_output(monkeypatch) -> None:
     _wire(monkeypatch)
     result = runner.invoke(app, ["feed", "--json"])
     assert result.exit_code == 0
-    assert '"text": "Hello feed"' in result.output
+    assert '"text":"Hello feed"' in result.output
 
 
 def test_auth_status_includes_probe_summary(monkeypatch) -> None:
@@ -155,14 +155,14 @@ def test_profile_json_output(monkeypatch) -> None:
     _wire(monkeypatch)
     result = runner.invoke(app, ["profile", "jane-doe", "--json"])
     assert result.exit_code == 0
-    assert '"public_id": "jane-doe"' in result.output
+    assert '"public_id":"jane-doe"' in result.output
 
 
 def test_search_json_output(monkeypatch) -> None:
     _wire(monkeypatch)
     result = runner.invoke(app, ["search", "builder", "--json"])
     assert result.exit_code == 0
-    assert '"title": "Jane Doe"' in result.output
+    assert '"title":"Jane Doe"' in result.output
 
 
 # ---- Voyager write commands: new confirm guard ---------------------------
@@ -232,7 +232,7 @@ def test_classify_json_output(monkeypatch) -> None:
     )
     result = runner.invoke(app, ["classify", "we are hiring", "--json"])
     assert result.exit_code == 0
-    assert '"hiring": true' in result.output
+    assert '"hiring":true' in result.output
 
 
 def test_doctor_reports_failure_exit_code(monkeypatch) -> None:
@@ -269,7 +269,7 @@ def test_feed_table_rendering_and_output_file(monkeypatch, tmp_path) -> None:
     result = runner.invoke(app, ["feed", "--output", str(out)])
     assert result.exit_code == 0
     assert "Jane Doe" in result.output
-    assert '"text": "Hello feed"' in out.read_text()
+    assert '"text":"Hello feed"' in out.read_text()
 
 
 def test_feed_error_path(monkeypatch) -> None:
@@ -448,19 +448,14 @@ def test_write_output_writes_payload_plus_newline_as_utf8(tmp_path) -> None:
     assert target.read_text(encoding="utf-8") == "hello\n"
 
 
-def test_handle_error_prints_a_failed_linkedin_panel_and_exits_1(monkeypatch) -> None:
+def test_handle_error_prints_one_line_with_next_step_and_exits_1(capsys) -> None:
     import typer
 
     from linkedin_mcp.cli import _handle_error
 
-    captured = {}
-    monkeypatch.setattr("linkedin_mcp.cli.build_status_panel", lambda *a, **k: captured.update(args=a) or "panel")
-    printed = []
-    monkeypatch.setattr("linkedin_mcp.cli.console.print", lambda p: printed.append(p))
-
     with pytest.raises(typer.Exit) as excinfo:
-        _handle_error(ValueError("boom"))
+        _handle_error(ValueError("boom\nmore"))
 
     assert excinfo.value.exit_code == 1
-    assert captured["args"] == ("linkedin", False, "boom")
-    assert printed == ["panel"]
+    err = capsys.readouterr().err
+    assert err == "error: boom more | next: run `li doctor`\n"

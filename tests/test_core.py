@@ -266,49 +266,36 @@ def test_doctor_delegates_to_doctor_module(monkeypatch) -> None:
     assert captured["path"] == Path("doc.yaml")
 
 
-def test_classify_message_shapes_result_and_forwards_exact_args(monkeypatch) -> None:
-    class Cfg:
-        pass
-
-    cfg = Cfg()
+def test_classify_message_delegates_to_classify_with_exact_args(monkeypatch) -> None:
     captured = {}
 
-    def fake_exclude_reason(name, headline, message, config):
-        captured["exclude_reason"] = (name, headline, message, config)
-        return "blocked"
+    def fake_classify(message, config=None, name="", headline="", company="", profile_url=""):
+        captured["args"] = (message, config, name, headline)
+        return {"hiring": True, "excluded": False, "already_referred": False, "reason": ""}
 
-    def fake_already_referred(text, config):
-        captured["already_referred"] = (text, config)
-        return True
-
-    monkeypatch.setattr(core, "load_agent_config", lambda path=None: cfg)
-    monkeypatch.setattr(core.classify_mod, "exclude_reason", fake_exclude_reason)
-    monkeypatch.setattr(core.classify_mod, "looks_like_hiring", lambda text: text == "hiring for a role")
-    monkeypatch.setattr(core.classify_mod, "already_referred", fake_already_referred)
+    monkeypatch.setattr(core, "load_agent_config", lambda path=None: "cfg")
+    monkeypatch.setattr(core.classify_mod, "classify", fake_classify)
     result = core.classify_message("hiring for a role", name="Jordan", headline="Recruiter")
-    assert result == {
-        "hiring": True,
-        "excluded": True,
-        "exclude_reason": "blocked",
-        "already_referred": True,
-    }
-    assert captured["exclude_reason"] == ("Jordan", "Recruiter", "hiring for a role", cfg)
-    assert captured["already_referred"] == ("hiring for a role", cfg)
+    assert result == {"hiring": True, "excluded": False, "already_referred": False, "reason": ""}
+    assert captured["args"] == ("hiring for a role", "cfg", "Jordan", "Recruiter")
 
 
 def test_classify_message_defaults_name_and_headline_to_empty_string(monkeypatch) -> None:
     captured = {}
-
-    def fake_exclude_reason(name, headline, message, config):
-        captured["args"] = (name, headline)
-        return ""
-
     monkeypatch.setattr(core, "load_agent_config", lambda path=None: "cfg")
-    monkeypatch.setattr(core.classify_mod, "exclude_reason", fake_exclude_reason)
-    monkeypatch.setattr(core.classify_mod, "looks_like_hiring", lambda text: False)
-    monkeypatch.setattr(core.classify_mod, "already_referred", lambda text, config: False)
+    monkeypatch.setattr(
+        core.classify_mod, "classify", lambda m, c=None, name="", headline="", **k: captured.update(a=(name, headline)) or {}
+    )
     core.classify_message("hi")
-    assert captured["args"] == ("", "")
+    assert captured["a"] == ("", "")
+
+
+def test_classify_message_flags_excluded_company_for_real(monkeypatch) -> None:
+    from linkedin_mcp.agent_config import Config
+
+    monkeypatch.setattr(core, "load_agent_config", lambda path=None: Config())
+    out = core.classify_message("We are hiring an engineer at Anduril")
+    assert out["excluded"] is True and out["reason"].startswith("excluded:")
 
 
 # ---- more direct wrapper coverage -----------------------------------------

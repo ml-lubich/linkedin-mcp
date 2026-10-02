@@ -129,14 +129,7 @@ def doctor(config_path: Optional[str] = None) -> dict:
 
 
 def classify_message(text: str, name: str = "", headline: str = "", config_path: Optional[str] = None) -> dict:
-    config = _agent_config(config_path)
-    reason = classify_mod.exclude_reason(name, headline, text, config)
-    return {
-        "hiring": classify_mod.looks_like_hiring(text),
-        "excluded": bool(reason),
-        "exclude_reason": reason,
-        "already_referred": classify_mod.already_referred(text, config),
-    }
+    return classify_mod.classify(text, _agent_config(config_path), name=name, headline=headline)
 
 
 def post_cdp_draft(text: str) -> dict:

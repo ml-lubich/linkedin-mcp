@@ -118,7 +118,7 @@ def test_scan_refuses_to_read_threads_when_messaging_never_becomes_ready(monkeyp
         (["messages", "threads", "--unread", "--json"], {0}),
         (["messages", "threads", "--limit", "5", "--json"], {0}),
         (["messages", "threads", "--filter", "ada"], {2}),
-        (["messages", "threads", "--filter", "ada", "--json"], {0}),
+        (["messages", "threads", "--filter", "ada", "--json"], {2}),  # a filter miss exits 2 whatever the format
         (["messages", "threads", "--no-navigate"], {0}),
         (["messages", "threads", "--no-navigate", "--json"], {0}),
         (["messages", "select", "Ada"], {2}),

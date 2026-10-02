@@ -62,7 +62,7 @@ def test_messages_workflow_json(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(core, "messages_workflow", lambda spec_path, **k: {"go": False, "reason": "regex miss", "sent": False})
     result = runner.invoke(app, ["messages", "workflow", str(spec), "--text", "hi", "--json"])
     assert result.exit_code == 0
-    assert '"sent": false' in result.output
+    assert '"sent":false' in result.output
 
 
 def test_messages_commands_json(monkeypatch) -> None:

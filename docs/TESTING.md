@@ -63,6 +63,13 @@ what it was before a change.
 - `tests/test_classify.py` — also `classify()` and `joe_fit()` (skip /
   stretch / strong table). `tests/test_scan_ledger.py` — scan with an
   injected fake reader plus ledger/exclusion rules and JSON output.
+- `tests/test_compact.py` — token-minimal output: compact JSON, `--fields`
+  / `--limit` / `--max-chars` (before and after the subcommand), truncation
+  with unicode, `{"more":k}`, one-line errors, `scan` text keeps the newest
+  chars, `-h` on nested commands. Core is mocked; no browser.
+- `tests/test_mut_messaging.py` mocks the pinned-tab path (`pages` returning a
+  tab with `webSocketDebuggerUrl`, `evaluate_pinned(ws_url, script)`), not
+  `evaluate`; `send_message` re-checks `location.href` before clicking Send.
 - `tests/test_cli_help.py` — `-h` and `--help` on the root, each command group, and a leaf command. `--json` / `-j` shows up on `messages read -h`.
 - `tests/test_cli_messaging_url_race.py` — every CLI command and flag that
   opens messaging (`scan`, `messages open|threads|select|read|popups|send

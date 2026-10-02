@@ -37,10 +37,14 @@ class Candidate:
     text: str
 
 
-def to_json(candidates: dict[str, Candidate]) -> str:
-    """Stable JSON list for agents: one object per candidate, plus a joe_fit verdict."""
-    rows = [{**asdict(c), "fit": joe_fit(c.text)} for c in candidates.values()]
-    return json.dumps(rows, indent=1, ensure_ascii=False)
+def to_json(candidates: dict[str, Candidate | dict]) -> str:
+    """Compact JSON list for agents: one object per candidate plus a joe_fit
+    verdict. Accepts Candidate objects or the plain dicts core.scan returns."""
+    rows = []
+    for c in candidates.values():
+        row = asdict(c) if isinstance(c, Candidate) else dict(c)
+        rows.append({**row, "fit": joe_fit(row.get("text", ""))})
+    return json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
 
 
 def _skip_reason(name: str, text: str, last_speaker_is_self: bool, config: Config) -> str:
