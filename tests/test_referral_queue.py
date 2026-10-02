@@ -13,7 +13,9 @@ from typer.testing import CliRunner
 
 import linkedin_mcp.core as core
 import linkedin_mcp.referral as ref
+from linkedin_mcp.cdp_session import JSON
 from linkedin_mcp.cli import app
+from linkedin_mcp.referral import LedgerLike
 
 runner = CliRunner()
 EMAIL = "referee@example.com"
@@ -34,11 +36,18 @@ class FakeLedger:
     def load(self):
         return list(self.rows)
 
-    def contacted(self, entry):
-        return entry["name"] in self.names or entry["company"] in {r["company"] for r in self.rows}
+    def contacted(
+        self,
+        name: str | None = None,
+        email: str | None = None,
+        company: str | None = None,
+        profile_url: str | None = None,
+    ) -> bool:
+        return name in self.names or company in {r["company"] for r in self.rows}
 
-    def append(self, entry):
+    def append(self, entry: JSON) -> bool:
         self.rows.append(entry)
+        return True
 
 
 class FakeWorld:
@@ -77,7 +86,7 @@ def world(monkeypatch):
     return w
 
 
-def run(items, config, ledger, confirm=True, **kw):
+def run(items, config, ledger: LedgerLike, confirm=True, **kw):
     return ref.run_queue(items, config, confirm=confirm, ledger=ledger, **kw)
 
 

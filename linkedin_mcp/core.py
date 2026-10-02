@@ -17,7 +17,6 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from types import ModuleType
 from typing import Any, Optional
 
 from . import auth_capture as auth_capture_mod
@@ -29,6 +28,7 @@ from . import messaging as messaging_mod
 from . import messages_actions as messages_actions_mod
 from . import post_cdp as post_cdp_mod
 from . import referral as referral_mod
+from .referral import LedgerLike
 from . import scan as scan_mod
 from .agent_config import Config as AgentConfig
 from .agent_config import load_config as load_agent_config
@@ -329,7 +329,7 @@ def referral_queue(
     limit: Optional[int] = None,
     port: Optional[int] = None,
     config_path: Optional[str] = None,
-    ledger: ModuleType | None = None,
+    ledger: LedgerLike | None = None,
 ) -> JSON:
     items = json.loads(Path(queue_path).expanduser().read_text())
     rate = _voyager_config(config_path).rate_limit

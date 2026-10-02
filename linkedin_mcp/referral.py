@@ -13,9 +13,9 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from types import ModuleType
 from typing import Protocol
 
+from linkedin_mcp import ledger as real_ledger
 from linkedin_mcp.classify import already_referred
 from linkedin_mcp.agent_config import Config
 from linkedin_mcp.copywriter import draft_referral, stale_days_from
@@ -160,17 +160,18 @@ def _count_resume(text: str, config: Config) -> int:
 
 
 class LedgerLike(Protocol):
-    """What run_queue needs from a ledger (the ledger module, or a test fake)."""
+    """What run_queue needs from a ledger: the signatures of linkedin_mcp.ledger
+    (the module itself satisfies this), so mypy checks every fake against the real API."""
 
-    def contacted(self, entry: JSON) -> bool: ...
+    def contacted(
+        self,
+        name: str | None = None,
+        email: str | None = None,
+        company: str | None = None,
+        profile_url: str | None = None,
+    ) -> bool: ...
 
     def append(self, entry: JSON) -> bool: ...
-
-
-def _ledger_module() -> ModuleType:
-    from linkedin_mcp import ledger  # owned by another module; same load/contacted/append interface
-
-    return ledger
 
 
 def run_queue(
@@ -190,7 +191,7 @@ def run_queue(
     validate_queue(items)
     if confirm and (not config.referral.email or not config.referral.resume_path):
         raise ValueError("referral.email and referral.resume_path must be configured")
-    ledger = ledger or _ledger_module()
+    ledger = real_ledger if ledger is None else ledger
     cdp_port = port if port is not None else config.cdp_port
     email = config.referral.email.lower()
     results: list[JSON] = []
@@ -205,12 +206,15 @@ def run_queue(
             break
         name = it["name"]
         entry = {"name": name, "company": it["company"], "role": it.get("role", ""), "channel": "linkedin",
-                 "profile_url": it.get("profile_url", ""), "thread_url": it.get("thread_url", "")}
+                 "profile_url": it.get("profile_url", ""), "thread_url": it.get("thread_url", ""),
+                 "email": it.get("email", "")}
         hit = _excluded(it["company"], name) or next((n for n in config.never_contact if n and _excluded_by(n, name)), "")
         if hit:
             skip(name, f"excluded: {hit}")
             continue
-        if ledger.contacted(entry):
+        if ledger.contacted(
+            name=name, email=it.get("email"), company=it["company"], profile_url=it.get("profile_url")
+        ):
             skip(name, "already in ledger")
             continue
         if not confirm:
