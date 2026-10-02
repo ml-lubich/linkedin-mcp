@@ -37,6 +37,7 @@ only — see `tests/test_own_chrome_import_boundary.py`):
 - `messages open/threads/select/read/send/popups/workflow/commands` —
   open messaging, list/filter threads, select one by name, read it, reply
   (with an optional file attachment), handle a dialog, classify-then-draft.
+- `followups [--days N]` — threads where our Joe referral is the last, unanswered, >= N days old message (default 3): `[{name,url,last_date,age_days,events}]`.
 - `scan` — threads that still need a reply/referral. Deterministic: skips
   threads we spoke last, that already mention the referee, hit the exclusion
   list, or involve a company already in the shared ledger

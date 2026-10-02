@@ -27,10 +27,10 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from own_chrome.cdp import ChromeError, evaluate, host_matches, navigate, open_tab, pages
+from own_chrome.cdp import ChromeError, evaluate, host_matches, navigate, pages
 
 from linkedin_mcp.agent_config import Config
-from linkedin_mcp.cdp_session import JSON, evaluate_pinned, set_file_input
+from linkedin_mcp.cdp_session import JSON, evaluate_pinned, open_tab, set_file_input
 from linkedin_mcp.governor import Governor
 from linkedin_mcp.messages_actions import (
     act_expression,
@@ -135,6 +135,9 @@ def _fill_compose(ws_url: str, text: str) -> None:
     ok = evaluate_pinned(ws_url, script)
     if not ok:
         raise ChromeError("compose box not found")
+
+
+_SEND_ENABLE_POLLS = 15
 
 
 def _send_button_enabled(ws_url: str) -> bool:
@@ -266,7 +269,13 @@ def send_message(
             f"pinned tab navigated away from {TAB} before send (now at {current_url!r}); aborting, nothing clicked"
         )
 
-    if not _send_button_enabled(ws_url):
+    # LinkedIn enables Send a beat after the compose box fires its input
+    # events; checking once, right after the fill, misreads that as disabled.
+    for _ in range(_SEND_ENABLE_POLLS):
+        if _send_button_enabled(ws_url):
+            break
+        time.sleep(0.2)
+    else:
         raise ChromeError("send button is disabled; not sending")
     _click_send(ws_url)
 

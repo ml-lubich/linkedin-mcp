@@ -16,7 +16,9 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from own_chrome.cdp import ChromeError, open_tab, pages
+from own_chrome.cdp import ChromeError, pages
+
+from linkedin_mcp.cdp_session import open_tab
 
 from linkedin_mcp.cdp_session import evaluate_pinned
 from linkedin_mcp.messages_actions import choose_linkedin_tab

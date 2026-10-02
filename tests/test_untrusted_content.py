@@ -38,6 +38,7 @@ WRAPPED_AS_UNTRUSTED = {
     "messages_read",
     "messages_threads",
     "scan",
+    "followups",
     "messages_workflow",
 }
 
@@ -111,6 +112,7 @@ def test_read_tool_result_is_marked_untrusted(monkeypatch, tool_name) -> None:
         "messages_threads": "messages_threads",
         "messages_workflow": "messages_workflow",
         "scan": "scan",
+        "followups": "followups",
         "search": "search",
         "profile_posts": "get_profile_posts",
     }[tool_name]

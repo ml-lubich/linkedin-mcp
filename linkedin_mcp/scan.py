@@ -11,7 +11,9 @@ of raw display lines, since that split is already available.
 from __future__ import annotations
 
 import json
+import re
 import time
+from datetime import date, datetime, timedelta
 from dataclasses import asdict, dataclass
 from typing import Protocol
 
@@ -147,3 +149,105 @@ def find_referral_candidates(
             text=text[-2500:],
         )
     return candidates
+
+
+# ---- follow-ups: threads where Misha's referral is the last, unanswered message
+
+_THREADS_JS = (
+    "(()=>JSON.stringify([...document.querySelectorAll('li.msg-conversation-listitem')].map((e,i)=>{"
+    "const n=e.querySelector('.msg-conversation-listitem__participant-names');"
+    "const s=e.querySelector('.msg-conversation-card__message-snippet');"
+    "return {i,name:n?n.innerText.trim():'',preview:s?s.innerText.trim():''}}).filter(t=>t.name)))()"
+)
+_OPEN_JS = (
+    "((i)=>{const l=document.querySelectorAll('li.msg-conversation-listitem')[i]"
+    ".querySelector('.msg-conversation-listitem__link');"
+    "const was=/--active/.test(l.className);l.click();return was})"
+)
+_EVENTS_JS = (
+    "(()=>{let date='',speaker='';const out=[];"
+    "for(const e of document.querySelectorAll('.msg-s-message-list__event')){"
+    "const h=e.querySelector('.msg-s-message-list__time-heading');if(h)date=h.innerText.trim();"
+    "const n=e.querySelector('.msg-s-message-group__name');if(n)speaker=n.innerText.trim();"
+    "const b=e.querySelector('.msg-s-event-listitem__body');if(b)out.push({speaker,date,body:b.innerText.trim()})}"
+    "return JSON.stringify({url:location.href,events:out})})()"
+)
+_JOE = re.compile(r"joe\b|joseph|heupler", re.I)
+_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+
+def parse_heading(label: str, today: date) -> date | None:
+    """LinkedIn day heading -> date: TODAY, YESTERDAY, a weekday (latest past
+    one), 'SEP 24' or 'SEP 24, 2025'. None when unrecognised."""
+    t = (label or "").strip().lower()
+    if t == "today":
+        return today
+    if t == "yesterday":
+        return today - timedelta(days=1)
+    if t in _WEEKDAYS:
+        return today - timedelta(days=(today.weekday() - _WEEKDAYS.index(t)) % 7 or 7)
+    m = re.fullmatch(r"([a-z]{3})[a-z]*\.? (\d{1,2})(?:, (\d{4}))?", t)
+    if not m:
+        return None
+    try:
+        d = datetime.strptime(f"{m[1]} {m[2]} {m[3] or today.year}", "%b %d %Y").date()
+    except ValueError:
+        return None
+    return d if m[3] or d <= today else d.replace(year=d.year - 1)
+
+
+def followup_row(name: str, url: str, events: list[dict], self_name: str, today: date, days: int = 3) -> dict | None:
+    """The thread as a follow-up candidate, or None. Candidate = last message
+    is ours, it is >= `days` old, we mentioned Joe, nobody replied after the
+    first Joe mention, and we never already wrote 'follow...' after it."""
+    mine = lambda e: bool(self_name) and e["speaker"].startswith(self_name)  # noqa: E731
+    if not events or not mine(events[-1]):
+        return None
+    first = next((i for i, e in enumerate(events) if mine(e) and _JOE.search(e["body"])), None)
+    if first is None:
+        return None
+    after = events[first:]
+    if any(not mine(e) for e in after) or any(re.search(r"follow", e["body"], re.I) for e in after[1:]):
+        return None
+    last = parse_heading(events[-1]["date"], today)
+    if last is None or (today - last).days < days:
+        return None
+    return {"name": name, "url": url, "last_date": last.isoformat(), "age_days": (today - last).days, "events": events[-6:]}
+
+
+def find_followup_candidates(
+    config: Config,
+    port: int | None = None,
+    days: int = 3,
+    today: date | None = None,
+    scroll_rounds: int = 15,
+    sleep_seconds: float = 2.0,
+    settle_seconds: float = 1.0,
+) -> list[dict]:
+    """Open every thread whose last preview is ours and keep follow-up candidates."""
+    today = today or date.today()
+    cdp_port = port if port is not None else config.cdp_port
+    opened = messaging.ensure_messaging(cdp_port)
+    if isinstance(opened, dict) and not opened.get("ready", True):
+        raise ChromeError(f"messaging tab not ready ({opened})")
+    _load_full_thread_list(cdp_port, scroll_rounds, sleep_seconds)
+    threads = json.loads(evaluate(cdp_port, _THREADS_JS, host=TAB))
+    rows: list[dict] = []
+    prev_url = ""
+    for t in threads:
+        if not t["preview"].startswith("You"):  # "You: ...", "You sent an attachment" (the resume)
+            continue
+        was_active = bool(evaluate(cdp_port, f"({_OPEN_JS})({t['i']})", host=TAB))
+        data: dict = {}
+        for _ in range(8):
+            time.sleep(settle_seconds)
+            data = json.loads(evaluate(cdp_port, _EVENTS_JS, host=TAB))
+            if data["events"] and (was_active or data["url"] != prev_url):
+                break
+        else:
+            continue  # thread never loaded; never judge a stale one
+        prev_url = data["url"]
+        row = followup_row(t["name"], data["url"], data["events"], config.self_name, today, days)
+        if row:
+            rows.append(row)
+    return rows

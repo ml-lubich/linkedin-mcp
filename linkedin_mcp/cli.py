@@ -445,6 +445,15 @@ def scan(
 
 
 @app.command()
+def followups(
+    ctx: typer.Context,
+    days: int = typer.Option(3, "--days", "-d", help="Minimum age in days of our last message."),
+) -> None:
+    """Threads where our referral is the last unanswered message: [{name,url,last_date,age_days,events}]."""
+    _emit(ctx, _call(lambda: core.followups(days=days, config_path=_config_path(ctx))))
+
+
+@app.command()
 def classify(
     ctx: typer.Context,
     text: str,

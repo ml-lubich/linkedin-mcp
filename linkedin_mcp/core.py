@@ -285,6 +285,12 @@ def scan(port: Optional[int] = None, config_path: Optional[str] = None) -> JSON:
     return {name: (dataclasses.asdict(c) if dataclasses.is_dataclass(c) else c) for name, c in candidates.items()}
 
 
+def followups(days: int = 3, port: Optional[int] = None, config_path: Optional[str] = None) -> list:
+    """Threads where our referral is the last, unanswered, >= `days` old message."""
+    config = _agent_config(config_path)
+    return scan_mod.find_followup_candidates(config, port=port, days=days)
+
+
 def referral_draft(
     name: str,
     text: str,

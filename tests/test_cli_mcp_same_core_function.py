@@ -57,6 +57,7 @@ CASES = [
     (["referral", "draft", "Jordan", "hi"], "referral_draft", {"name": "Jordan", "text": "hi"}, "referral_draft", {"draft": "hi", "problems": []}),
     (["referral", "send", "Jordan", "https://x", "--confirm"], "referral_send", {"name": "Jordan", "url": "https://x", "confirm": True}, "referral_send", {"name": "Jordan", "skipped": "", "draft": "hi", "proof": {"sent": True}}),
     (["scan"], "scan", {}, "scan", {}),
+    (["followups"], "followups", {"days": 3}, "followups", []),
     (["login"], "login", {}, "login", {"status": "signed_in", "account": "a"}),
     (["referral", "queue", "q.json", "--confirm"], "referral_queue", {"queue_path": "q.json", "confirm": True}, "referral_queue", {"dry_run": False, "results": [], "aborted": ""}),
 ]
