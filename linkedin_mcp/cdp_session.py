@@ -37,14 +37,15 @@ from own_chrome.cdp import ChromeError, cdp_call, pick_page
 JSON = dict[str, Any]  # JSON/CDP boundary: payload shapes are page-defined
 
 
-def open_tab(port: int, url: str) -> dict[str, Any]:
+def open_tab(port: int, url: str) -> JSON:
     """Open `url` in a new tab. Chrome 111+ only allows PUT on /json/new
     (own_chrome.cdp.open_tab sends GET and gets HTTP 405)."""
     quoted = urllib.parse.quote(url, safe=":/?&=%")
     req = urllib.request.Request(f"http://127.0.0.1:{port}/json/new?{quoted}", method="PUT")
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode())
+            tab: JSON = json.loads(resp.read().decode())
+            return tab
     except (urllib.error.URLError, OSError, ValueError) as exc:
         raise ChromeError(f"Chrome CDP is not up on port {port}: {exc}") from exc
 

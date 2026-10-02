@@ -196,11 +196,13 @@ def parse_heading(label: str, today: date) -> date | None:
     return d if m[3] or d <= today else d.replace(year=d.year - 1)
 
 
-def followup_row(name: str, url: str, events: list[dict], self_name: str, today: date, days: int = 3) -> dict | None:
+def followup_row(name: str, url: str, events: list[JSON], self_name: str, today: date, days: int = 3) -> JSON | None:
     """The thread as a follow-up candidate, or None. Candidate = last message
     is ours, it is >= `days` old, we mentioned Joe, nobody replied after the
     first Joe mention, and we never already wrote 'follow...' after it."""
-    mine = lambda e: bool(self_name) and e["speaker"].startswith(self_name)  # noqa: E731
+    def mine(e: JSON) -> bool:
+        return bool(self_name) and e["speaker"].startswith(self_name)
+
     if not events or not mine(events[-1]):
         return None
     first = next((i for i, e in enumerate(events) if mine(e) and _JOE.search(e["body"])), None)
@@ -223,7 +225,7 @@ def find_followup_candidates(
     scroll_rounds: int = 15,
     sleep_seconds: float = 2.0,
     settle_seconds: float = 1.0,
-) -> list[dict]:
+) -> list[JSON]:
     """Open every thread whose last preview is ours and keep follow-up candidates."""
     today = today or date.today()
     cdp_port = port if port is not None else config.cdp_port
@@ -232,13 +234,13 @@ def find_followup_candidates(
         raise ChromeError(f"messaging tab not ready ({opened})")
     _load_full_thread_list(cdp_port, scroll_rounds, sleep_seconds)
     threads = json.loads(evaluate(cdp_port, _THREADS_JS, host=TAB))
-    rows: list[dict] = []
+    rows: list[JSON] = []
     prev_url = ""
     for t in threads:
         if not t["preview"].startswith("You"):  # "You: ...", "You sent an attachment" (the resume)
             continue
         was_active = bool(evaluate(cdp_port, f"({_OPEN_JS})({t['i']})", host=TAB))
-        data: dict = {}
+        data: JSON = {}
         for _ in range(8):
             time.sleep(settle_seconds)
             data = json.loads(evaluate(cdp_port, _EVENTS_JS, host=TAB))
