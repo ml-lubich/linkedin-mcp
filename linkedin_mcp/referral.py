@@ -96,10 +96,10 @@ EXCLUDED = ("mach", "anduril", "echostar", "dish", "amd", "w3sourcing", "perry b
 # Files whose presence in a thread means the resume already went out.
 RESUME_FILES = ("resume_joseph_heupler.pdf", "joseph_heupler_resume.pdf")
 _SNAPSHOT_JS = (
-    "JSON.stringify({header: [document.title, ...document.querySelectorAll("
-    "'.msg-entity-lockup__entity-title, .msg-thread__link-to-profile, .msg-overlay-bubble-header__title')]"
-    ".map(e => e.innerText || e)].join('\\n'),"
-    "text: [...document.querySelectorAll('.msg-s-event-listitem')].map(e => e.innerText).join('\\n')})"
+    "JSON.stringify({header: [document.title, ...Array.from(document.querySelectorAll("
+    "'.msg-entity-lockup__entity-title, .msg-thread__link-to-profile, .msg-overlay-bubble-header__title'))]"
+    ".map(e => e.innerText || e).join('\\n'),"
+    "text: Array.from(document.querySelectorAll('.msg-s-event-listitem')).map(e => e.innerText).join('\\n')})"
 )
 _MESSAGE_BUTTON_JS = (
     "(() => {const b = [...document.querySelectorAll('main button, main a')]"
