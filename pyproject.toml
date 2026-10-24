@@ -70,6 +70,7 @@ packages = ["linkedin_mcp"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 asyncio_mode = "auto"
+addopts = "--cov=linkedin_mcp --cov-report=term-missing --cov-fail-under=80"
 
 [tool.coverage.run]
 source = ["linkedin_mcp"]

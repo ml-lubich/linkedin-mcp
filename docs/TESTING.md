@@ -24,7 +24,7 @@ No test is skipped or marked `xfail`; a red test means something is broken.
 
 ```bash
 uv run mypy linkedin_mcp
-uv run pytest -q --cov=linkedin_mcp --cov-report=term-missing
+uv run pytest -q
 ```
 
 `mypy --strict` (config in `pyproject.toml`) is part of the gate: it must exit 0,
@@ -36,7 +36,9 @@ Run it three times before trusting a new/changed test — flakes hide in CDP
 timing code (`auth_capture.capture`'s poll loop, `messaging.send_message`'s
 verify-retry loop) if `time.sleep` isn't mocked.
 
-Target: **>=80% line coverage on new/changed files** (all of `core.py`,
+The suite enforces **>=80% aggregate line coverage** for `linkedin_mcp` on every
+run through pytest's configured coverage options. Keep new and changed files at
+or above that target (all of `core.py`,
 `guard.py`, `cli.py`, `mcp_server.py`, `auth_capture.py`, and every module
 ported from linkedin-agent are at 85-100%); repo total should not drop below
 what it was before a change.
