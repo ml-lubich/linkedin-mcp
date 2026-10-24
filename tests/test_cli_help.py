@@ -1,3 +1,4 @@
+from click import unstyle
 from typer.testing import CliRunner
 
 from linkedin_mcp.cli import app
@@ -18,19 +19,22 @@ def test_help_short_flag_on_root_groups_and_leaves():
     )
     for args in invocations:
         result = runner.invoke(app, args)
-        assert result.exit_code == 0, (args, result.output)
-        assert "Usage" in result.output
+        output = unstyle(result.output)
+        assert result.exit_code == 0, (args, output)
+        assert "Usage" in output
     read_help = runner.invoke(app, ["messages", "read", "-h"])
-    assert "-j" in read_help.output and "--json" in read_help.output
+    read_output = unstyle(read_help.output)
+    assert "-j" in read_output and "--json" in read_output
 
 
 def test_root_help_uses_shared_surface_and_version_shortcut():
     result = runner.invoke(app, ["-h"])
+    output = unstyle(result.output)
     assert result.exit_code == 0
-    assert "-V" in result.output and "--version" in result.output
-    assert "--install-completion" not in result.output
-    assert "--show-completion" not in result.output
-    options_panel = result.output.split("╭─ Options", 1)[1].split("╭─ Commands", 1)[0]
+    assert "-V" in output and "--version" in output
+    assert "--install-completion" not in output
+    assert "--show-completion" not in output
+    options_panel = output.split("╭─ Options", 1)[1].split("╭─ Commands", 1)[0]
     for legacy in ("--config", "--fields", "--limit", "--max-chars"):
         assert legacy not in options_panel
 
@@ -41,7 +45,8 @@ def test_root_help_uses_shared_surface_and_version_shortcut():
 
 def test_root_without_command_shows_help():
     result = runner.invoke(app, [])
+    output = unstyle(result.output)
     assert result.exit_code == 2
-    assert "Usage" in result.output
-    assert "auth" in result.output
-    assert "Error" not in result.output
+    assert "Usage" in output
+    assert "auth" in output
+    assert "Error" not in output
