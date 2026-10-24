@@ -192,15 +192,21 @@ export LINKEDIN_CONFIG="$PWD/config.yaml"
 ## Token-minimal output
 
 Every read command (`scan`, `messages threads|read`, `search`, `feed`, `profile`,
-`profile-posts`, `activity`) prints ONE line of compact JSON. Shape it with
-global options (`--fields`/`--max-chars` work before or after the subcommand,
-`--limit` goes before it):
+`profile-posts`, `activity`) prints ONE line of compact JSON. Existing scripts
+can still shape output with the legacy global flags (`--fields`/`--max-chars`
+work before or after the subcommand; `--limit` goes before it). These flags
+remain accepted but are hidden from root help:
 
 ```bash
 linkedin scan                                  # [{name,url,unread,text,fit}], text = newest 300 chars
 linkedin --limit 5 scan --fields name,url,fit
 linkedin messages read --max-chars 0           # full bodies when you really need them
 ```
+
+Root help keeps shared options (`-h`/`--help`, `-V`/`--version`, and
+`-v`/`--verbose`) visible. Generated shell-completion options are disabled.
+Legacy `--config`, `--fields`, `--limit`, and `--max-chars` root options
+remain accepted for script compatibility and are omitted from help.
 
 A list cut by `--limit` ends with `{"more":k}`; dicts holding lists gain `n`
 (row count). `--json` is still accepted and changes nothing. Errors are one

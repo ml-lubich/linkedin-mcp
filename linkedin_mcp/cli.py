@@ -52,21 +52,34 @@ app = typer.Typer(
     cls=_RootGroup,
     name="linkedin",
     help="linkedin - LinkedIn CLI + MCP server.",
+    no_args_is_help=True,
     add_completion=False,
     context_settings=_HELP,
 )
-auth_app = typer.Typer(help="Manage the LinkedIn session cookie.", no_args_is_help=True, context_settings=_HELP)
+auth_app = typer.Typer(
+    help="Manage the LinkedIn session cookie.",
+    no_args_is_help=True,
+    add_completion=False,
+    context_settings=_HELP,
+)
 post_cdp_app = typer.Typer(
     help="Draft or publish a feed post over your own logged-in Chrome (CDP).",
     no_args_is_help=True,
+    add_completion=False,
     context_settings=_HELP,
 )
 messages_app = typer.Typer(
     help="Read or send a LinkedIn message in the open thread (CDP).",
     no_args_is_help=True,
+    add_completion=False,
     context_settings=_HELP,
 )
-referral_app = typer.Typer(help="Draft or send a referral message (CDP).", no_args_is_help=True, context_settings=_HELP)
+referral_app = typer.Typer(
+    help="Draft or send a referral message (CDP).",
+    no_args_is_help=True,
+    add_completion=False,
+    context_settings=_HELP,
+)
 app.add_typer(auth_app, name="auth")
 app.add_typer(post_cdp_app, name="post-cdp")
 app.add_typer(messages_app, name="messages")
@@ -82,13 +95,40 @@ def _version_callback(value: bool) -> None:
 @app.callback()
 def main_callback(
     ctx: typer.Context,
-    config_path: Optional[str] = typer.Option(None, "--config", help="Path to a config YAML/TOML file."),
+    config_path: Optional[str] = typer.Option(
+        None,
+        "--config",
+        help="Path to a config YAML/TOML file.",
+        hidden=True,
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
-    fields: Optional[str] = typer.Option(None, "--fields", "-F", help="Comma list of keys to keep per row (e.g. name,url)."),
-    limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Max rows to print (a final {\"more\":k} row says k were cut)."),
-    max_chars: int = typer.Option(300, "--max-chars", help="Truncate every string to N chars (0 = no cut)."),
+    fields: Optional[str] = typer.Option(
+        None,
+        "--fields",
+        "-F",
+        help="Comma list of keys to keep per row (e.g. name,url).",
+        hidden=True,
+    ),
+    limit: Optional[int] = typer.Option(
+        None,
+        "--limit",
+        "-l",
+        help="Max rows to print (a final {\"more\":k} row says k were cut).",
+        hidden=True,
+    ),
+    max_chars: int = typer.Option(
+        300,
+        "--max-chars",
+        help="Truncate every string to N chars (0 = no cut).",
+        hidden=True,
+    ),
     version: Optional[bool] = typer.Option(
-        None, "--version", callback=_version_callback, is_eager=True, help="Show version and exit."
+        None,
+        "--version",
+        "-V",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show version and exit.",
     ),
 ) -> None:
     """linkedin - LinkedIn CLI."""
