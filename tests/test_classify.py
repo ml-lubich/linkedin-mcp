@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pytest
+
+from linkedin_mcp import classify as classify_mod
 from linkedin_mcp.classify import already_referred, exclude_reason, looks_like_hiring
 
 
@@ -44,11 +47,6 @@ def test_already_referred_disabled_config(disabled_config):
 
 
 # --- classify() / joe_fit() -------------------------------------------------
-import pytest
-
-from linkedin_mcp import classify as classify_mod
-
-
 @pytest.fixture(autouse=True)
 def _ledger(tmp_path, monkeypatch):
     monkeypatch.setenv("JOE_REFERRAL_LEDGER", str(tmp_path / "ledger.json"))

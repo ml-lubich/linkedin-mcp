@@ -5,7 +5,6 @@ character constraints, and CLI subcommand behavior with --json.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner

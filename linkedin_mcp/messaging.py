@@ -111,7 +111,7 @@ def read_thread(port: int, limit: int = 40) -> JSON:
         "url: location.href,"
         "bodies: [...document.querySelectorAll('.msg-s-event-listitem__body')].map(e=>e.innerText.trim()),"
         "speakers: [...document.querySelectorAll('.msg-s-message-group__name')].map(e=>e.innerText.trim())"
-        f"}})",
+        "})",
         TAB,
     )
     data: JSON = json.loads(raw) if isinstance(raw, str) else raw

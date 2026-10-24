@@ -14,7 +14,7 @@ from __future__ import annotations
 import pytest
 
 import linkedin_mcp.core as core
-from linkedin_mcp.governor import Governor, RateLimited
+from linkedin_mcp.governor import RateLimited
 
 
 @pytest.fixture

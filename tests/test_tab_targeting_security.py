@@ -12,7 +12,6 @@ from __future__ import annotations
 import pytest
 
 from linkedin_mcp import messaging, post_cdp, scan as scan_mod
-from linkedin_mcp.agent_config import Config
 
 
 def test_open_thread_uses_host_not_substring_for_navigate(monkeypatch):

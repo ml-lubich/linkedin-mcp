@@ -169,14 +169,14 @@ def test_search_json_output(monkeypatch) -> None:
 
 
 def test_post_without_confirm_fails_and_never_calls_client(monkeypatch) -> None:
-    client = _wire(monkeypatch)
+    _wire(monkeypatch)
     result = runner.invoke(app, ["post", "hello world"])
     assert result.exit_code == 1
     assert "confirm=True" in result.output
 
 
 def test_post_with_confirm_calls_client(monkeypatch) -> None:
-    client = _wire(monkeypatch)
+    _wire(monkeypatch)
     result = runner.invoke(app, ["post", "hello world", "--confirm"])
     assert result.exit_code == 0
     assert "posted connections: hello world" in result.output
