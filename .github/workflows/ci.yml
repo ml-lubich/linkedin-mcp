@@ -28,4 +28,6 @@ jobs:
 
       - name: Test
         run: uv run pytest -q
+        env:
+          NO_COLOR: "1"
 
