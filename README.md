@@ -148,6 +148,7 @@ exclusion lists. Nothing personal is hardcoded here.
 
 ```bash
 linkedin-mcp serve   # stdio transport
+linkedin agent schema  # print machine-readable CLI commands and options
 ```
 
 Claude Code / Cursor config:

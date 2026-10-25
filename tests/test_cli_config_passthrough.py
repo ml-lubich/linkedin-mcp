@@ -26,7 +26,15 @@ runner = CliRunner()
 # Commands that genuinely take no config_path -- auth capture/env are pure
 # CDP/file operations, post-cdp draft is pure text linting, messages commands
 # is a static catalog, serve starts the server itself.
-NO_CONFIG_NEEDED = {"auth_capture", "auth_env", "post_cdp_draft", "messages_commands", "serve", "prompt"}
+NO_CONFIG_NEEDED = {
+    "auth_capture",
+    "auth_env",
+    "post_cdp_draft",
+    "messages_commands",
+    "serve",
+    "prompt",
+    "agent_schema",
+}
 
 CASES = [
     (["--config", "cfg.toml", "auth-status"], "auth_diagnostics"),

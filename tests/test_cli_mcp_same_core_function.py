@@ -21,7 +21,15 @@ runner = CliRunner()
 # Commands with no MCP tool at all (test_mcp_parity.py's CLI_ONLY) or that
 # genuinely take no config_path (test_cli_config_passthrough.py's
 # NO_CONFIG_NEEDED) -- neither belongs in this same-core-function check.
-NOT_APPLICABLE = {"serve", "auth_env", "auth_capture", "post_cdp_draft", "messages_commands", "prompt"}
+NOT_APPLICABLE = {
+    "serve",
+    "auth_env",
+    "auth_capture",
+    "post_cdp_draft",
+    "messages_commands",
+    "prompt",
+    "agent_schema",
+}
 
 
 def _run(coro):

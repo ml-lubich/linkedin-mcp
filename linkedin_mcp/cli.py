@@ -14,7 +14,7 @@ import typer
 from rich.console import Console
 from typer.core import TyperGroup
 
-from . import __version__, compact, core
+from . import __version__, agent, compact, core
 from . import scan as scan_mod
 from .serialization import profile_to_dict
 
@@ -80,10 +80,23 @@ referral_app = typer.Typer(
     add_completion=False,
     context_settings=_HELP,
 )
+agent_app = typer.Typer(
+    help="Machine-readable command information for agent integrations.",
+    no_args_is_help=True,
+    add_completion=False,
+    context_settings=_HELP,
+)
 app.add_typer(auth_app, name="auth")
 app.add_typer(post_cdp_app, name="post-cdp")
 app.add_typer(messages_app, name="messages")
 app.add_typer(referral_app, name="referral")
+app.add_typer(agent_app, name="agent")
+
+
+@agent_app.command("schema")
+def agent_schema_cmd() -> None:
+    """Print the complete CLI command schema as JSON."""
+    typer.echo(json.dumps(agent.build_schema(app), ensure_ascii=False, separators=(",", ":")))
 
 
 def _version_callback(value: bool) -> None:

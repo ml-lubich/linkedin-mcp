@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 import pytest
@@ -261,6 +262,20 @@ def test_version_flag_prints_version_and_exits() -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
     assert result.output.strip()
+
+
+def test_agent_schema_is_json_and_lists_nested_commands() -> None:
+    result = runner.invoke(app, ["agent", "schema"])
+
+    assert result.exit_code == 0
+    schema = json.loads(result.output)
+    assert schema["tool"] == "linkedin"
+    names = {command["name"] for command in schema["commands"]}
+    assert {"feed", "auth capture", "messages send", "agent schema", "serve"} <= names
+    send = next(command for command in schema["commands"] if command["name"] == "messages send")
+    params = {param["name"]: param for param in send["params"]}
+    assert params["text"]["required"] is True
+    assert "--confirm" in params["confirm"]["flags"]
 
 
 def test_feed_table_rendering_and_output_file(monkeypatch, tmp_path) -> None:

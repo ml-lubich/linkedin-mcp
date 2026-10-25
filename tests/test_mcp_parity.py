@@ -17,7 +17,8 @@ from linkedin_mcp.mcp_server import mcp
 #  - auth_env: the one command that reads a raw cookie value back out. Never
 #    exposed as an MCP tool -- an MCP client/LLM should not receive it.
 #  - prompt: prompt template inspection & emission subcommand (reflected via prompt_manager / helper).
-CLI_ONLY = {"serve", "auth_env", "prompt"}
+#  - agent_schema: describes the CLI surface; it is not an operational MCP tool.
+CLI_ONLY = {"serve", "auth_env", "prompt", "agent_schema"}
 
 
 # MCP tools with intentionally no matching CLI command (none yet).

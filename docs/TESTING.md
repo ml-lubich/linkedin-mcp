@@ -52,8 +52,9 @@ what it was before a change.
   `UnexpectedToolError` when a write tool is called without `confirm: true`.
 - `tests/test_mcp_parity.py` — every CLI command has a matching MCP tool
   (dashes/spaces -> underscores) or is on the explicit allowlist (`serve`,
-  `auth_env`), and vice versa. This is the test that fails first if the two
-  surfaces drift.
+  `auth_env`, `prompt`, and `agent schema`), and vice versa. This is the test
+  that fails first if the two surfaces drift. `linkedin agent schema` also has
+  CLI coverage for valid JSON and nested commands.
 - `auth_capture.py` — the CDP cookie-capture poll loop (success, timeout,
   Chrome-not-reachable, and the raw `Network.getCookies` call), and that a
   cookie value never appears in the returned report.

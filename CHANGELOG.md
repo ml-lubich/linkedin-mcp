@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, adapted for this repository.
 
 ## [Unreleased]
 
+- Added `linkedin agent schema`, which reports registered nested CLI commands
+  and parameters as JSON.
 - Token-minimal CLI: every read command prints one line of compact JSON; global
   `--fields`, `--limit`, `--max-chars` (default 300); one-line errors with the
   next step (`linkedin_mcp/compact.py`); write commands print one status line.
