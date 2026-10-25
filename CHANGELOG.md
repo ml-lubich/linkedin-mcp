@@ -8,8 +8,9 @@ The format is based on Keep a Changelog, adapted for this repository.
 
 ## [0.3.0] - 2026-10-25
 
-- Publish the package as `linkedin-cli-mcp`; the PyPI name `linkedin-mcp` is
-  already occupied. Keep the installed CLI commands `li`, `linkedin`, and
+- Target the package name `linkedin-cli-mcp` because `linkedin-mcp` belongs to
+  another project. The new PyPI project must be provisioned before its first
+  upload. Keep the installed CLI commands `li`, `linkedin`, and
   `linkedin-mcp` unchanged.
 - Verify distribution name, version, lockfile metadata, and console script
   names in the test suite.

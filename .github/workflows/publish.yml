@@ -1,8 +1,8 @@
 name: Publish
 
+# Release-triggered publishing is paused until linkedin-cli-mcp is provisioned
+# on PyPI and a trusted publisher is configured for this workflow.
 on:
-  release:
-    types: [published]
   workflow_dispatch:
 
 jobs:

@@ -90,8 +90,12 @@ asked for it, however it's phrased.
 
 ## Installation
 
-Install the published package (the installed commands remain `li`,
-`linkedin`, and `linkedin-mcp`):
+The intended PyPI distribution name is `linkedin-cli-mcp`; `linkedin-mcp`
+belongs to another project. PyPI must provision the new name before its first
+upload. Until then, install from source using the instructions below. The
+executable commands remain `li`, `linkedin`, and `linkedin-mcp`.
+
+After the PyPI project is provisioned and published:
 
 ```bash
 uv tool install linkedin-cli-mcp
