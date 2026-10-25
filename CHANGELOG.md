@@ -6,6 +6,14 @@ The format is based on Keep a Changelog, adapted for this repository.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-25
+
+- Publish the package as `linkedin-cli-mcp`; the PyPI name `linkedin-mcp` is
+  already occupied. Keep the installed CLI commands `li`, `linkedin`, and
+  `linkedin-mcp` unchanged.
+- Verify distribution name, version, lockfile metadata, and console script
+  names in the test suite.
+
 - Added `linkedin agent schema`, which reports registered nested CLI commands
   and parameters as JSON.
 - Token-minimal CLI: every read command prints one line of compact JSON; global

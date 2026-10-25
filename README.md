@@ -90,13 +90,22 @@ asked for it, however it's phrased.
 
 ## Installation
 
+Install the published package (the installed commands remain `li`,
+`linkedin`, and `linkedin-mcp`):
+
+```bash
+uv tool install linkedin-cli-mcp
+```
+
+To install from source instead:
+
 ```bash
 git clone https://github.com/ml-lubich/linkedin-mcp.git
 cd linkedin-mcp
-uv tool install --force --from . linkedin-mcp
+uv tool install --force --from . linkedin-cli-mcp
 ```
 
-Installs two identical console scripts, `linkedin` and `linkedin-mcp`. If you
+Installs the `li`, `linkedin`, and `linkedin-mcp` console scripts. If you
 previously had the standalone tools installed, remove them so their command
 names don't shadow this one:
 

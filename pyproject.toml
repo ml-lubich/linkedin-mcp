@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "linkedin-mcp"
-version = "0.2.0"
+name = "linkedin-cli-mcp"
+version = "0.3.0"
 description = "LinkedIn CLI + MCP server: feed/profile/search/social actions over the Voyager API, plus CDP-driven messaging, referrals, and posting against your own logged-in Chrome"
 readme = "README.md"
 license = "MIT"
